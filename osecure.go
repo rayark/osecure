@@ -1,4 +1,4 @@
-package osecure 
+package osecure
 
 import (
 	"encoding/base64"
@@ -20,7 +20,6 @@ type AuthSessionData struct {
 	IssuedAt    time.Time
 }
 
-
 type CookieConfig struct {
 	SigningKey    string `yaml:"signing_key" env:"skey"`
 	EncryptionKey string `yaml:"encryption_key" env:"ekey"`
@@ -32,7 +31,6 @@ type OAuthConfig struct {
 	AuthURL  string `yaml:"auth_url" env:"auth_url"`
 	TokenURL string `yaml:"token_url" env:"token_url"`
 }
-
 
 func NewAuthSessionData(token oauth2.Token) *AuthSessionData {
 	return &AuthSessionData{
@@ -113,6 +111,7 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 	cont := q.Get("state")
 
 	jr, err := s.client.Exchange(oauth2.NoContext, code)
+
 	if err != nil {
 		http.Error(w, err.Error(), 400)
 		return
