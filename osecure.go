@@ -16,7 +16,7 @@ func init() {
 }
 
 type AuthSessionData struct {
-	AccessToken string
+	AccessToken oauth2.Token
 	IssuedAt    time.Time
 }
 
@@ -34,7 +34,7 @@ type OAuthConfig struct {
 }
 
 
-func NewAuthSessionData(token string) *AuthSessionData {
+func NewAuthSessionData(token oauth2.Token) *AuthSessionData {
 	return &AuthSessionData{
 		AccessToken: token,
 		IssuedAt:    time.Now()}
@@ -63,7 +63,7 @@ func NewOAuthSession(name string, oauthConf *OAuthConfig, cookieConf *CookieConf
 		RedirectURL: callbackURL,
 	}
 	return &OAuthSession{
-		name : name,
+		name:        name,
 		cookieStore: newCookieStore(cookieConf),
 		client:      client,
 	}
@@ -117,11 +117,11 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 400)
 		return
 	}
-	s.issueAuthCookie(w, r, jr.AccessToken)
+	s.issueAuthCookie(w, r, *jr)
 	http.Redirect(w, r, cont, 303)
 }
 
-func (s *OAuthSession) issueAuthCookie(w http.ResponseWriter, r *http.Request, token string) {
+func (s *OAuthSession) issueAuthCookie(w http.ResponseWriter, r *http.Request, token oauth2.Token) {
 	session, err := s.cookieStore.Get(r, "redeem")
 	if err != nil {
 		panic(err)
