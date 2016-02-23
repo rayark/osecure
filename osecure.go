@@ -3,10 +3,13 @@ package osecure
 import (
 	"encoding/base64"
 	"encoding/gob"
+	"encoding/json"
+	"errors"
 	"github.com/gorilla/sessions"
 	"github.com/zenazn/goji/web"
 	"golang.org/x/oauth2"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -16,8 +19,8 @@ func init() {
 }
 
 type AuthSessionData struct {
-	AccessToken oauth2.Token
-	IssuedAt    time.Time
+	Token    oauth2.Token
+	IssuedAt time.Time
 }
 
 type CookieConfig struct {
@@ -26,16 +29,18 @@ type CookieConfig struct {
 }
 
 type OAuthConfig struct {
-	ClientID string `yaml:"client_id" env:"client_id"`
-	Secret   string `yaml:"secret" env:"secret"`
-	AuthURL  string `yaml:"auth_url" env:"auth_url"`
-	TokenURL string `yaml:"token_url" env:"token_url"`
+	ClientID         string `yaml:"client_id" env:"client_id"`
+	Secret           string `yaml:"secret" env:"secret"`
+	AuthURL          string `yaml:"auth_url" env:"auth_url"`
+	TokenURL         string `yaml:"token_url" env:"token_url"`
+	PermissionsURL   string `yaml:"permissions_url" env:"permissions_url"`
+	HasPermissionURL string `yaml:"has_permission_url" env:"has_permission_url"`
 }
 
 func NewAuthSessionData(token oauth2.Token) *AuthSessionData {
 	return &AuthSessionData{
-		AccessToken: token,
-		IssuedAt:    time.Now()}
+		Token:    token,
+		IssuedAt: time.Now()}
 }
 
 func (data *AuthSessionData) IsExpired() bool {
@@ -47,6 +52,7 @@ type OAuthSession struct {
 	name        string
 	cookieStore *sessions.CookieStore
 	client      *oauth2.Config
+	config      *OAuthConfig
 }
 
 func NewOAuthSession(name string, oauthConf *OAuthConfig, cookieConf *CookieConfig, callbackURL string) *OAuthSession {
@@ -64,6 +70,7 @@ func NewOAuthSession(name string, oauthConf *OAuthConfig, cookieConf *CookieConf
 		name:        name,
 		cookieStore: newCookieStore(cookieConf),
 		client:      client,
+		config:      oauthConf,
 	}
 }
 
@@ -79,6 +86,71 @@ func (s *OAuthSession) Secured(c *web.C, h http.Handler) http.Handler {
 }
 
 func (s *OAuthSession) isAuthorized(r *http.Request) bool {
+	data := s.getAuthSessionDataFromRequest(r)
+	if data == nil || data.IsExpired() {
+		return false
+	}
+
+	return true
+}
+
+func (s *OAuthSession) GetPermissions(r *http.Request) ([]string, error) {
+	data := s.getAuthSessionDataFromRequest(r)
+	if data == nil || data.IsExpired() {
+		return nil, errors.New("invalid session")
+	}
+
+	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(&data.Token))
+
+	resp, err := client.Get(s.config.PermissionsURL)
+	if err != nil {
+		panic(err)
+	}
+
+	var result struct {
+		permissions []string `json:"permissions"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(result)
+	if err != nil {
+		panic(err)
+	}
+
+	return result.permissions, nil
+}
+
+func (s *OAuthSession) HasPermission(r *http.Request, permission string) bool {
+	data := s.getAuthSessionDataFromRequest(r)
+	if data == nil || data.IsExpired() {
+		return false
+	}
+
+	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(&data.Token))
+
+	url, err := url.Parse(s.config.HasPermissionURL)
+	if err != nil {
+		panic(err)
+	}
+	query := url.Query()
+	query.Set("permission", permission)
+	url.RawQuery = query.Encode()
+
+	resp, err := client.Get(url.String())
+	if err != nil {
+		panic(err)
+	}
+
+	var result struct {
+		hasPermission bool `json:"has_permission"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(result)
+	if err != nil {
+		panic(err)
+	}
+
+	return result.hasPermission
+}
+
+func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) *AuthSessionData {
 	session, err := s.cookieStore.Get(r, s.name)
 	if err != nil {
 		panic(err)
@@ -86,19 +158,16 @@ func (s *OAuthSession) isAuthorized(r *http.Request) bool {
 
 	v, found := session.Values["data"]
 	if !found {
-		return false
+		return nil
 	}
 
 	data, ok := v.(*AuthSessionData)
 	if !ok {
-		return false
+		return nil
 	}
 
-	if data.IsExpired() {
-		return false
-	}
+	return data
 
-	return true
 }
 
 func (s *OAuthSession) startOAuth(w http.ResponseWriter, r *http.Request) {
