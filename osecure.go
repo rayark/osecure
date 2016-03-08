@@ -9,8 +9,13 @@ import (
 	"github.com/zenazn/goji/web"
 	"golang.org/x/oauth2"
 	"net/http"
-	"net/url"
+	"sort"
 	"time"
+)
+
+var (
+	SessionExpireTime    = 86400
+	PermissionExpireTime = 600
 )
 
 func init() {
@@ -19,8 +24,10 @@ func init() {
 }
 
 type AuthSessionData struct {
-	Token    oauth2.Token
-	IssuedAt time.Time
+	Token        oauth2.Token
+	ExpireAt     time.Time
+	Permissions  []string
+	PermExpireAt time.Time
 }
 
 type CookieConfig struct {
@@ -29,23 +36,28 @@ type CookieConfig struct {
 }
 
 type OAuthConfig struct {
-	ClientID         string `yaml:"client_id" env:"client_id"`
-	Secret           string `yaml:"secret" env:"secret"`
-	AuthURL          string `yaml:"auth_url" env:"auth_url"`
-	TokenURL         string `yaml:"token_url" env:"token_url"`
-	PermissionsURL   string `yaml:"permissions_url" env:"permissions_url"`
-	HasPermissionURL string `yaml:"has_permission_url" env:"has_permission_url"`
+	ClientID       string `yaml:"client_id" env:"client_id"`
+	Secret         string `yaml:"secret" env:"secret"`
+	AuthURL        string `yaml:"auth_url" env:"auth_url"`
+	TokenURL       string `yaml:"token_url" env:"token_url"`
+	PermissionsURL string `yaml:"permissions_url" env:"permissions_url"`
 }
 
 func NewAuthSessionData(token oauth2.Token) *AuthSessionData {
 	return &AuthSessionData{
-		Token:    token,
-		IssuedAt: time.Now()}
+		Token:        token,
+		ExpireAt:     time.Now().Add(time.Duration(SessionExpireTime) * time.Second),
+		Permissions:  []string{},
+		PermExpireAt: time.Time{}, // Zero time
+	}
 }
 
 func (data *AuthSessionData) IsExpired() bool {
-	expiresAt := data.IssuedAt.Add(time.Duration(86400 * time.Second))
-	return expiresAt.Before(time.Now())
+	return data.ExpireAt.Before(time.Now())
+}
+
+func (data *AuthSessionData) IsPermExpired() bool {
+	return data.PermExpireAt.Before(time.Now())
 }
 
 type OAuthSession struct {
@@ -94,10 +106,9 @@ func (s *OAuthSession) isAuthorized(r *http.Request) bool {
 	return true
 }
 
-func (s *OAuthSession) GetPermissions(r *http.Request) ([]string, error) {
-	data := s.getAuthSessionDataFromRequest(r)
-	if data == nil || data.IsExpired() {
-		return nil, errors.New("invalid session")
+func (s *OAuthSession) ensurePermUpdated(data *AuthSessionData) {
+	if !data.IsPermExpired() {
+		return
 	}
 
 	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(&data.Token))
@@ -115,7 +126,23 @@ func (s *OAuthSession) GetPermissions(r *http.Request) ([]string, error) {
 		panic(err)
 	}
 
-	return result.permissions, nil
+	data.Permissions = result.permissions
+	data.PermExpireAt = time.Now().Add(time.Duration(PermissionExpireTime) * time.Second)
+
+	// Sort the string, as sort.SearchStrings needs sorted []string.
+	sort.Strings(data.Permissions)
+	return
+}
+
+func (s *OAuthSession) GetPermissions(r *http.Request) ([]string, error) {
+	data := s.getAuthSessionDataFromRequest(r)
+	if data == nil || data.IsExpired() {
+		return nil, errors.New("invalid session")
+	}
+
+	s.ensurePermUpdated(data)
+
+	return data.Permissions, nil
 }
 
 func (s *OAuthSession) HasPermission(r *http.Request, permission string) bool {
@@ -124,30 +151,14 @@ func (s *OAuthSession) HasPermission(r *http.Request, permission string) bool {
 		return false
 	}
 
-	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(&data.Token))
+	s.ensurePermUpdated(data)
 
-	url, err := url.Parse(s.config.HasPermissionURL)
-	if err != nil {
-		panic(err)
-	}
-	query := url.Query()
-	query.Set("permission", permission)
-	url.RawQuery = query.Encode()
+	perms := data.Permissions
 
-	resp, err := client.Get(url.String())
-	if err != nil {
-		panic(err)
-	}
+	id := sort.SearchStrings(perms, permission)
+	result := id < len(perms) && perms[id] == permission
 
-	var result struct {
-		hasPermission bool `json:"has_permission"`
-	}
-	err = json.NewDecoder(resp.Body).Decode(result)
-	if err != nil {
-		panic(err)
-	}
-
-	return result.hasPermission
+	return result
 }
 
 func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) *AuthSessionData {
