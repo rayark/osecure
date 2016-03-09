@@ -61,10 +61,10 @@ func (data *AuthSessionData) IsPermExpired() bool {
 }
 
 type OAuthSession struct {
-	name        string
-	cookieStore *sessions.CookieStore
-	client      *oauth2.Config
-	config      *OAuthConfig
+	name           string
+	cookieStore    *sessions.CookieStore
+	client         *oauth2.Config
+	permissionsURL string
 }
 
 func NewOAuthSession(name string, oauthConf *OAuthConfig, cookieConf *CookieConfig, callbackURL string) *OAuthSession {
@@ -79,10 +79,10 @@ func NewOAuthSession(name string, oauthConf *OAuthConfig, cookieConf *CookieConf
 		RedirectURL: callbackURL,
 	}
 	return &OAuthSession{
-		name:        name,
-		cookieStore: newCookieStore(cookieConf),
-		client:      client,
-		config:      oauthConf,
+		name:           name,
+		cookieStore:    newCookieStore(cookieConf),
+		client:         client,
+		permissionsURL: oauthConf.PermissionsURL,
 	}
 }
 
@@ -106,14 +106,14 @@ func (s *OAuthSession) isAuthorized(r *http.Request) bool {
 	return true
 }
 
-func (s *OAuthSession) ensurePermUpdated(data *AuthSessionData) {
+func (s *OAuthSession) ensurePermUpdated(w http.ResponseWriter, r *http.Request, data *AuthSessionData) {
 	if !data.IsPermExpired() {
 		return
 	}
 
 	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(&data.Token))
 
-	resp, err := client.Get(s.config.PermissionsURL)
+	resp, err := client.Get(s.permissionsURL)
 	if err != nil {
 		panic(err)
 	}
@@ -131,27 +131,29 @@ func (s *OAuthSession) ensurePermUpdated(data *AuthSessionData) {
 
 	// Sort the string, as sort.SearchStrings needs sorted []string.
 	sort.Strings(data.Permissions)
+
+	s.issueAuthCookie(w, r, data)
 	return
 }
 
-func (s *OAuthSession) GetPermissions(r *http.Request) ([]string, error) {
+func (s *OAuthSession) GetPermissions(w http.ResponseWriter, r *http.Request) ([]string, error) {
 	data := s.getAuthSessionDataFromRequest(r)
 	if data == nil || data.IsExpired() {
 		return nil, errors.New("invalid session")
 	}
 
-	s.ensurePermUpdated(data)
+	s.ensurePermUpdated(w, r, data)
 
 	return data.Permissions, nil
 }
 
-func (s *OAuthSession) HasPermission(r *http.Request, permission string) bool {
+func (s *OAuthSession) HasPermission(w http.ResponseWriter, r *http.Request, permission string) bool {
 	data := s.getAuthSessionDataFromRequest(r)
 	if data == nil || data.IsExpired() {
 		return false
 	}
 
-	s.ensurePermUpdated(data)
+	s.ensurePermUpdated(w, r, data)
 
 	perms := data.Permissions
 
@@ -172,12 +174,12 @@ func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) *AuthSessi
 		return nil
 	}
 
-	data, ok := v.(*AuthSessionData)
+	data, ok := v.(AuthSessionData)
 	if !ok {
 		return nil
 	}
 
-	return data
+	return &data
 
 }
 
@@ -196,16 +198,16 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 400)
 		return
 	}
-	s.issueAuthCookie(w, r, *jr)
+	s.issueAuthCookie(w, r, NewAuthSessionData(*jr))
 	http.Redirect(w, r, cont, 303)
 }
 
-func (s *OAuthSession) issueAuthCookie(w http.ResponseWriter, r *http.Request, token oauth2.Token) {
+func (s *OAuthSession) issueAuthCookie(w http.ResponseWriter, r *http.Request, data *AuthSessionData) {
 	session, err := s.cookieStore.Get(r, "redeem")
 	if err != nil {
 		panic(err)
 	}
-	session.Values["data"] = NewAuthSessionData(token)
+	session.Values["data"] = *data
 	session.Save(r, w)
 }
 
