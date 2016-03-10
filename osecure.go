@@ -5,6 +5,7 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"errors"
+	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
 	"golang.org/x/oauth2"
 	"net/http"
@@ -233,14 +234,19 @@ func newCookieStore(conf *CookieConfig) *sessions.CookieStore {
 	var signingKey, encryptionKey []byte
 	var err error
 
-	signingKey, err = base64.StdEncoding.DecodeString(conf.SigningKey)
-	if err != nil {
-		panic(err)
-	}
+	if conf != nil {
+		signingKey, err = base64.StdEncoding.DecodeString(conf.SigningKey)
+		if err != nil {
+			panic(err)
+		}
 
-	encryptionKey, err = base64.StdEncoding.DecodeString(conf.EncryptionKey)
-	if err != nil {
-		panic(err)
+		encryptionKey, err = base64.StdEncoding.DecodeString(conf.EncryptionKey)
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		signingKey = securecookie.GenerateRandomKey(64)
+		encryptionKey = securecookie.GenerateRandomKey(32)
 	}
 
 	return sessions.NewCookieStore(signingKey, encryptionKey)
