@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/gorilla/sessions"
-	"github.com/zenazn/goji/web"
 	"golang.org/x/oauth2"
 	"net/http"
 	"sort"
@@ -86,7 +85,7 @@ func NewOAuthSession(name string, oauthConf *OAuthConfig, cookieConf *CookieConf
 	}
 }
 
-func (s *OAuthSession) Secured(c *web.C, h http.Handler) http.Handler {
+func (s *OAuthSession) Secured(h http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
 		if !s.isAuthorized(r) {
 			s.startOAuth(w, r)
