@@ -119,14 +119,14 @@ func (s *OAuthSession) ensurePermUpdated(w http.ResponseWriter, r *http.Request,
 	}
 
 	var result struct {
-		permissions []string `json:"permissions"`
+		Permissions []string `json:"permissions"`
 	}
-	err = json.NewDecoder(resp.Body).Decode(result)
+	err = json.NewDecoder(resp.Body).Decode(&result)
 	if err != nil {
 		panic(err)
 	}
 
-	data.Permissions = result.permissions
+	data.Permissions = result.Permissions
 	data.PermExpireAt = time.Now().Add(time.Duration(PermissionExpireTime) * time.Second)
 
 	// Sort the string, as sort.SearchStrings needs sorted []string.
@@ -174,12 +174,12 @@ func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) *AuthSessi
 		return nil
 	}
 
-	data, ok := v.(AuthSessionData)
+	data, ok := v.(*AuthSessionData)
 	if !ok {
 		return nil
 	}
 
-	return &data
+	return data
 
 }
 
@@ -203,11 +203,11 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *OAuthSession) issueAuthCookie(w http.ResponseWriter, r *http.Request, data *AuthSessionData) {
-	session, err := s.cookieStore.Get(r, "redeem")
+	session, err := s.cookieStore.Get(r, s.name)
 	if err != nil {
 		panic(err)
 	}
-	session.Values["data"] = *data
+	session.Values["data"] = data
 	session.Save(r, w)
 }
 
