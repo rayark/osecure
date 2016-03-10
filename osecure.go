@@ -96,6 +96,14 @@ func (s *OAuthSession) Secured(h http.Handler) http.Handler {
 	return http.HandlerFunc(fn)
 }
 
+func (s *OAuthSession) ExpireSession(redirect string) http.Handler {
+	fn := func(w http.ResponseWriter, r *http.Request) {
+		s.expireAuthCookie(w, r)
+		http.Redirect(w, r, redirect, 303)
+	}
+	return http.HandlerFunc(fn)
+}
+
 func (s *OAuthSession) isAuthorized(r *http.Request) bool {
 	data := s.getAuthSessionDataFromRequest(r)
 	if data == nil || data.IsExpired() {
@@ -207,6 +215,16 @@ func (s *OAuthSession) issueAuthCookie(w http.ResponseWriter, r *http.Request, d
 		panic(err)
 	}
 	session.Values["data"] = data
+	session.Save(r, w)
+}
+
+func (s *OAuthSession) expireAuthCookie(w http.ResponseWriter, r *http.Request) {
+	session, err := s.cookieStore.Get(r, s.name)
+	if err != nil {
+		panic(err)
+	}
+	delete(session.Values, "data")
+	session.Options.MaxAge = -1
 	session.Save(r, w)
 }
 
