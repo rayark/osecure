@@ -1,3 +1,4 @@
+// Package osecure provides simple login service based on OAuth client.
 package osecure
 
 import (
@@ -30,11 +31,15 @@ type AuthSessionData struct {
 	PermExpireAt time.Time
 }
 
+// CookieConfig is a config of github.com/gorilla/securecookie. Recommended
+// configurations are base64 of 64 bytes key for SigningKey, and base64 of 32
+// bytes key for EncryptionKey.
 type CookieConfig struct {
 	SigningKey    string `yaml:"signing_key" env:"skey"`
 	EncryptionKey string `yaml:"encryption_key" env:"ekey"`
 }
 
+// OAuthConfig is a config of osecure.
 type OAuthConfig struct {
 	ClientID       string `yaml:"client_id" env:"client_id"`
 	Secret         string `yaml:"secret" env:"secret"`
@@ -67,6 +72,7 @@ type OAuthSession struct {
 	permissionsURL string
 }
 
+// NewOAuthSession creates osecure session.
 func NewOAuthSession(name string, oauthConf *OAuthConfig, cookieConf *CookieConfig, callbackURL string) *OAuthSession {
 
 	client := &oauth2.Config{
@@ -86,6 +92,7 @@ func NewOAuthSession(name string, oauthConf *OAuthConfig, cookieConf *CookieConf
 	}
 }
 
+// Secured is a http middleware to check if the current user has logged in.
 func (s *OAuthSession) Secured(h http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
 		if !s.isAuthorized(r) {
@@ -97,6 +104,7 @@ func (s *OAuthSession) Secured(h http.Handler) http.Handler {
 	return http.HandlerFunc(fn)
 }
 
+// ExpireSession is a http function to log out the user.
 func (s *OAuthSession) ExpireSession(redirect string) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
 		s.expireAuthCookie(w, r)
@@ -144,6 +152,7 @@ func (s *OAuthSession) ensurePermUpdated(w http.ResponseWriter, r *http.Request,
 	return
 }
 
+// GetPermissions lists the permissions of the current user and client.
 func (s *OAuthSession) GetPermissions(w http.ResponseWriter, r *http.Request) ([]string, error) {
 	data := s.getAuthSessionDataFromRequest(r)
 	if data == nil || data.IsExpired() {
@@ -155,6 +164,7 @@ func (s *OAuthSession) GetPermissions(w http.ResponseWriter, r *http.Request) ([
 	return data.Permissions, nil
 }
 
+// HasPermission checks if the current user has such permission.
 func (s *OAuthSession) HasPermission(w http.ResponseWriter, r *http.Request, permission string) bool {
 	data := s.getAuthSessionDataFromRequest(r)
 	if data == nil || data.IsExpired() {
@@ -195,6 +205,8 @@ func (s *OAuthSession) startOAuth(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, s.client.AuthCodeURL(r.RequestURI), 303)
 }
 
+// CallbackView is a http handler for the authentication redirection of the
+// auth server.
 func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	code := q.Get("code")
