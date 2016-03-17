@@ -21,10 +21,10 @@ var (
 
 func init() {
 	gob.Register(&time.Time{})
-	gob.Register(&AuthSessionData{})
+	gob.Register(&authSessionData{})
 }
 
-type AuthSessionData struct {
+type authSessionData struct {
 	Token        oauth2.Token
 	ExpireAt     time.Time
 	Permissions  []string
@@ -48,8 +48,8 @@ type OAuthConfig struct {
 	PermissionsURL string `yaml:"permissions_url" env:"permissions_url"`
 }
 
-func NewAuthSessionData(token oauth2.Token) *AuthSessionData {
-	return &AuthSessionData{
+func newAuthSessionData(token oauth2.Token) *authSessionData {
+	return &authSessionData{
 		Token:        token,
 		ExpireAt:     time.Now().Add(time.Duration(SessionExpireTime) * time.Second),
 		Permissions:  []string{},
@@ -57,11 +57,11 @@ func NewAuthSessionData(token oauth2.Token) *AuthSessionData {
 	}
 }
 
-func (data *AuthSessionData) IsExpired() bool {
+func (data *authSessionData) IsExpired() bool {
 	return data.ExpireAt.Before(time.Now())
 }
 
-func (data *AuthSessionData) IsPermExpired() bool {
+func (data *authSessionData) IsPermExpired() bool {
 	return data.PermExpireAt.Before(time.Now())
 }
 
@@ -122,7 +122,7 @@ func (s *OAuthSession) isAuthorized(r *http.Request) bool {
 	return true
 }
 
-func (s *OAuthSession) ensurePermUpdated(w http.ResponseWriter, r *http.Request, data *AuthSessionData) {
+func (s *OAuthSession) ensurePermUpdated(w http.ResponseWriter, r *http.Request, data *authSessionData) {
 	if !data.IsPermExpired() {
 		return
 	}
@@ -181,7 +181,7 @@ func (s *OAuthSession) HasPermission(w http.ResponseWriter, r *http.Request, per
 	return result
 }
 
-func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) *AuthSessionData {
+func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) *authSessionData {
 	session, err := s.cookieStore.Get(r, s.name)
 	if err != nil {
 		panic(err)
@@ -192,7 +192,7 @@ func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) *AuthSessi
 		return nil
 	}
 
-	data, ok := v.(*AuthSessionData)
+	data, ok := v.(*authSessionData)
 	if !ok {
 		return nil
 	}
@@ -218,11 +218,11 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 400)
 		return
 	}
-	s.issueAuthCookie(w, r, NewAuthSessionData(*jr))
+	s.issueAuthCookie(w, r, newAuthSessionData(*jr))
 	http.Redirect(w, r, cont, 303)
 }
 
-func (s *OAuthSession) issueAuthCookie(w http.ResponseWriter, r *http.Request, data *AuthSessionData) {
+func (s *OAuthSession) issueAuthCookie(w http.ResponseWriter, r *http.Request, data *authSessionData) {
 	session, err := s.cookieStore.Get(r, s.name)
 	if err != nil {
 		panic(err)
