@@ -57,11 +57,11 @@ func newAuthSessionData(token oauth2.Token) *authSessionData {
 	}
 }
 
-func (data *authSessionData) IsExpired() bool {
+func (data *authSessionData) isExpired() bool {
 	return data.ExpireAt.Before(time.Now())
 }
 
-func (data *authSessionData) IsPermExpired() bool {
+func (data *authSessionData) isPermExpired() bool {
 	return data.PermExpireAt.Before(time.Now())
 }
 
@@ -115,7 +115,7 @@ func (s *OAuthSession) ExpireSession(redirect string) http.Handler {
 
 func (s *OAuthSession) isAuthorized(r *http.Request) bool {
 	data := s.getAuthSessionDataFromRequest(r)
-	if data == nil || data.IsExpired() {
+	if data == nil || data.isExpired() {
 		return false
 	}
 
@@ -123,7 +123,7 @@ func (s *OAuthSession) isAuthorized(r *http.Request) bool {
 }
 
 func (s *OAuthSession) ensurePermUpdated(w http.ResponseWriter, r *http.Request, data *authSessionData) {
-	if !data.IsPermExpired() {
+	if !data.isPermExpired() {
 		return
 	}
 
@@ -155,7 +155,7 @@ func (s *OAuthSession) ensurePermUpdated(w http.ResponseWriter, r *http.Request,
 // GetPermissions lists the permissions of the current user and client.
 func (s *OAuthSession) GetPermissions(w http.ResponseWriter, r *http.Request) ([]string, error) {
 	data := s.getAuthSessionDataFromRequest(r)
-	if data == nil || data.IsExpired() {
+	if data == nil || data.isExpired() {
 		return nil, errors.New("invalid session")
 	}
 
@@ -167,7 +167,7 @@ func (s *OAuthSession) GetPermissions(w http.ResponseWriter, r *http.Request) ([
 // HasPermission checks if the current user has such permission.
 func (s *OAuthSession) HasPermission(w http.ResponseWriter, r *http.Request, permission string) bool {
 	data := s.getAuthSessionDataFromRequest(r)
-	if data == nil || data.IsExpired() {
+	if data == nil || data.isExpired() {
 		return false
 	}
 
