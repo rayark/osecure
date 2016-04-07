@@ -4,6 +4,7 @@ package osecure
 import (
 	"encoding/base64"
 	"encoding/gob"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"github.com/gorilla/securecookie"
@@ -41,11 +42,13 @@ type CookieConfig struct {
 
 // OAuthConfig is a config of osecure.
 type OAuthConfig struct {
-	ClientID       string `yaml:"client_id" env:"client_id"`
-	Secret         string `yaml:"secret" env:"secret"`
-	AuthURL        string `yaml:"auth_url" env:"auth_url"`
-	TokenURL       string `yaml:"token_url" env:"token_url"`
-	PermissionsURL string `yaml:"permissions_url" env:"permissions_url"`
+	ClientID                 string `yaml:"client_id" env:"client_id"`
+	Secret                   string `yaml:"secret" env:"secret"`
+	AuthURL                  string `yaml:"auth_url" env:"auth_url"`
+	TokenURL                 string `yaml:"token_url" env:"token_url"`
+	PermissionsURL           string `yaml:"permissions_url" env:"permissions_url"`
+	ServerTokenURL           string `yaml:"server_token_url" env:"server_token_url"`
+	ServerTokenEncryptionKey string `yaml:"server_token_encryption_key" env:"server_token_encryption_key"`
 }
 
 func newAuthSessionData(token oauth2.Token) *authSessionData {
@@ -66,10 +69,12 @@ func (data *authSessionData) isPermExpired() bool {
 }
 
 type OAuthSession struct {
-	name           string
-	cookieStore    *sessions.CookieStore
-	client         *oauth2.Config
-	permissionsURL string
+	name                     string
+	cookieStore              *sessions.CookieStore
+	client                   *oauth2.Config
+	permissionsURL           string
+	serverTokenURL           string
+	serverTokenEncryptionKey []byte
 }
 
 // NewOAuthSession creates osecure session.
@@ -84,11 +89,19 @@ func NewOAuthSession(name string, oauthConf *OAuthConfig, cookieConf *CookieConf
 		},
 		RedirectURL: callbackURL,
 	}
+
+	serverTokenEncryptionKey, err := hex.DecodeString(oauthConf.ServerTokenEncryptionKey)
+	if err != nil {
+		panic(err)
+	}
+
 	return &OAuthSession{
-		name:           name,
-		cookieStore:    newCookieStore(cookieConf),
-		client:         client,
-		permissionsURL: oauthConf.PermissionsURL,
+		name:                     name,
+		cookieStore:              newCookieStore(cookieConf),
+		client:                   client,
+		permissionsURL:           oauthConf.PermissionsURL,
+		serverTokenURL:           oauthConf.ServerTokenURL,
+		serverTokenEncryptionKey: serverTokenEncryptionKey,
 	}
 }
 
