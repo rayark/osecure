@@ -197,7 +197,7 @@ func (s *OAuthSession) HasPermission(w http.ResponseWriter, r *http.Request, per
 func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) *authSessionData {
 	session, err := s.cookieStore.Get(r, s.name)
 	if err != nil {
-		panic(err)
+		return nil
 	}
 
 	v, found := session.Values["data"]
