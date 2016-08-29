@@ -236,9 +236,9 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *OAuthSession) issueAuthCookie(w http.ResponseWriter, r *http.Request, data *authSessionData) {
-	session, err := s.cookieStore.Get(r, s.name)
+	session, err := s.cookieStore.New(r, s.name)
 	if err != nil {
-		panic(err)
+		//don't care
 	}
 	session.Values["data"] = data
 	session.Save(r, w)
