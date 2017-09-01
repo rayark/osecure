@@ -78,12 +78,12 @@ type OAuthSession struct {
 	client                   *oauth2.Config
 	serverTokenURL           string
 	serverTokenEncryptionKey []byte
-	tokenVerifier            TokenVerifier
+	tokenVerifier            *TokenVerifier
 	//permissionsURL           string
 }
 
 // NewOAuthSession creates osecure session.
-func NewOAuthSession(name string, oauthConf *OAuthConfig, cookieConf *CookieConfig, callbackURL string) *OAuthSession {
+func NewOAuthSession(name string, oauthConf *OAuthConfig, cookieConf *CookieConfig, callbackURL string, tokenVerifier *TokenVerifier) *OAuthSession {
 
 	client := &oauth2.Config{
 		ClientID:     oauthConf.ClientID,
@@ -101,7 +101,7 @@ func NewOAuthSession(name string, oauthConf *OAuthConfig, cookieConf *CookieConf
 	}
 
 	//tokenVerifier := TokenVerifier{IntrospectTokenFunc: GoogleIntrospection(), GetPermissionsFunc: SentryGrant(oauthConf.PermissionsURL)}
-	tokenVerifier := TokenVerifier{IntrospectTokenFunc: GoogleIntrospection(), GetPermissionsFunc: GoogleGrant()}
+	//tokenVerifier := TokenVerifier{IntrospectTokenFunc: GoogleIntrospection(), GetPermissionsFunc: GoogleGrant()}
 
 	return &OAuthSession{
 		name:                     name,
