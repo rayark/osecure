@@ -49,9 +49,20 @@ func SentryGrant(permissionsURL string) osecure.GetPermissionsFunc {
 
 }
 
-func GoogleGrant() osecure.GetPermissionsFunc {
+func PredefinedPermissionRoles(roleSubjectsMap map[string][]string) osecure.GetPermissionsFunc {
+	subjectRolesMap := make(map[string][]string)
+	for role, subjects := range roleSubjectsMap {
+		for _, subject := range subjects {
+			subjectRolesMap[subject] = append(subjectRolesMap[subject], role)
+		}
+	}
+
 	return func(subject string, token *oauth2.Token) (permissions []string, err error) {
-		return []string{"user"}, nil
+		roles, ok := subjectRolesMap[subject]
+		if !ok {
+			return nil, errors.New("cannot found this subject (a.k.a. user ID)")
+		}
+		return roles, nil
 	}
 
 }

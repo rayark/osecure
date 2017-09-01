@@ -43,13 +43,14 @@ type CookieConfig struct {
 
 // OAuthConfig is a config of osecure.
 type OAuthConfig struct {
-	ClientID                 string `yaml:"client_id" env:"client_id"`
-	Secret                   string `yaml:"secret" env:"secret"`
-	AuthURL                  string `yaml:"auth_url" env:"auth_url"`
-	TokenURL                 string `yaml:"token_url" env:"token_url"`
-	PermissionsURL           string `yaml:"permissions_url" env:"permissions_url"`
-	ServerTokenURL           string `yaml:"server_token_url" env:"server_token_url"`
-	ServerTokenEncryptionKey string `yaml:"server_token_encryption_key" env:"server_token_encryption_key"`
+	ClientID                 string   `yaml:"client_id" env:"client_id"`
+	ClientSecret             string   `yaml:"client_secret" env:"client_secret"`
+	Scopes                   []string `yaml:"scopes" env:"scopes"`
+	AuthURL                  string   `yaml:"auth_url" env:"auth_url"`
+	TokenURL                 string   `yaml:"token_url" env:"token_url"`
+	ServerTokenURL           string   `yaml:"server_token_url" env:"server_token_url"`
+	ServerTokenEncryptionKey string   `yaml:"server_token_encryption_key" env:"server_token_encryption_key"`
+	//PermissionsURL           string `yaml:"permissions_url" env:"permissions_url"`
 }
 
 func newAuthSessionData(subject string, token *oauth2.Token) *authSessionData {
@@ -87,7 +88,8 @@ func NewOAuthSession(name string, oauthConf *OAuthConfig, cookieConf *CookieConf
 
 	client := &oauth2.Config{
 		ClientID:     oauthConf.ClientID,
-		ClientSecret: oauthConf.Secret,
+		ClientSecret: oauthConf.ClientSecret,
+		Scopes:       oauthConf.Scopes,
 		Endpoint: oauth2.Endpoint{
 			AuthURL:  oauthConf.AuthURL,
 			TokenURL: oauthConf.TokenURL,
@@ -247,8 +249,14 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: how to get subject (account ID) when using exchange code for token?
-	err = s.issueAuthCookie(w, r, newAuthSessionData("", token))
+	// TODO: how to get subject (account ID) when using exchange code only?
+	subject, _, err := s.tokenVerifier.IntrospectTokenFunc(token.AccessToken)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	err = s.issueAuthCookie(w, r, newAuthSessionData(subject, token))
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
