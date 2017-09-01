@@ -117,24 +117,22 @@ func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConf
 }
 
 // Secured is a http middleware to check if the current user has logged in.
-func (s *OAuthSession) Secured(h http.Handler) http.Handler {
-	fn := func(w http.ResponseWriter, r *http.Request) {
+func (s *OAuthSession) Secured(h http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		if !s.isAuthorized(w, r) {
 			s.startOAuth(w, r)
 			return
 		}
 		h.ServeHTTP(w, r)
 	}
-	return http.HandlerFunc(fn)
 }
 
 // ExpireSession is a http function to log out the user.
-func (s *OAuthSession) ExpireSession(redirect string) http.Handler {
-	fn := func(w http.ResponseWriter, r *http.Request) {
+func (s *OAuthSession) ExpireSession(redirect string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		s.expireAuthCookie(w, r)
 		http.Redirect(w, r, redirect, 303)
 	}
-	return http.HandlerFunc(fn)
 }
 
 func (s *OAuthSession) isAuthorized(w http.ResponseWriter, r *http.Request) bool {
