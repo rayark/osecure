@@ -17,6 +17,13 @@ import (
 )
 
 var (
+	ErrorInvalidSession                   = errors.New("invalid session")
+	ErrorInvalidAuthorizationHeaderFormat = errors.New("invalid authorization header format")
+	ErrorUnsupportedAuthorizationType     = errors.New("unsupported authorization type")
+	ErrorCannotFoundCurrentSubject        = errors.New("cannot found current subject (a.k.a. user ID)")
+)
+
+var (
 	SessionExpireTime    = 86400
 	PermissionExpireTime = 600
 )
@@ -50,7 +57,6 @@ type OAuthConfig struct {
 	TokenURL                 string   `yaml:"token_url" env:"token_url"`
 	ServerTokenURL           string   `yaml:"server_token_url" env:"server_token_url"`
 	ServerTokenEncryptionKey string   `yaml:"server_token_encryption_key" env:"server_token_encryption_key"`
-	//PermissionsURL           string `yaml:"permissions_url" env:"permissions_url"`
 }
 
 func newAuthSessionData(subject string, token *oauth2.Token) *authSessionData {
@@ -77,15 +83,13 @@ type OAuthSession struct {
 	name                     string
 	cookieStore              *sessions.CookieStore
 	client                   *oauth2.Config
+	tokenVerifier            *TokenVerifier
 	serverTokenURL           string
 	serverTokenEncryptionKey []byte
-	tokenVerifier            *TokenVerifier
-	//permissionsURL           string
 }
 
 // NewOAuthSession creates osecure session.
-func NewOAuthSession(name string, oauthConf *OAuthConfig, cookieConf *CookieConfig, callbackURL string, tokenVerifier *TokenVerifier) *OAuthSession {
-
+func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConfig, tokenVerifier *TokenVerifier, callbackURL string) *OAuthSession {
 	client := &oauth2.Config{
 		ClientID:     oauthConf.ClientID,
 		ClientSecret: oauthConf.ClientSecret,
@@ -102,17 +106,13 @@ func NewOAuthSession(name string, oauthConf *OAuthConfig, cookieConf *CookieConf
 		panic(err)
 	}
 
-	//tokenVerifier := TokenVerifier{IntrospectTokenFunc: GoogleIntrospection(), GetPermissionsFunc: SentryGrant(oauthConf.PermissionsURL)}
-	//tokenVerifier := TokenVerifier{IntrospectTokenFunc: GoogleIntrospection(), GetPermissionsFunc: GoogleGrant()}
-
 	return &OAuthSession{
 		name:                     name,
 		cookieStore:              newCookieStore(cookieConf),
 		client:                   client,
+		tokenVerifier:            tokenVerifier,
 		serverTokenURL:           oauthConf.ServerTokenURL,
 		serverTokenEncryptionKey: serverTokenEncryptionKey,
-		tokenVerifier:            tokenVerifier,
-		//permissionsURL:           oauthConf.PermissionsURL,
 	}
 }
 
@@ -185,7 +185,7 @@ func (s *OAuthSession) GetPermissions(w http.ResponseWriter, r *http.Request) ([
 		return nil, err
 	}
 	if data == nil || data.isTokenExpired() {
-		return nil, errors.New("invalid session")
+		return nil, ErrorInvalidSession
 	}
 
 	err = s.ensurePermUpdated(w, r, data)
@@ -270,12 +270,12 @@ func (s *OAuthSession) getBearerToken(r *http.Request) (string, error) {
 
 	authorizationData := strings.SplitN(authorizationHeaderValue, " ", 2)
 	if len(authorizationData) != 2 {
-		return "", errors.New("invalid authorization header format")
+		return "", ErrorInvalidAuthorizationHeaderFormat
 	}
 
 	tokenType := authorizationData[0]
 	if tokenType != "Bearer" {
-		return "", errors.New("unsupported authorization type")
+		return "", ErrorUnsupportedAuthorizationType
 	}
 
 	bearerToken := authorizationData[1]

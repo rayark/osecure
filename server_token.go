@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	INVALID_SERVER_TOKEN = errors.New("invalid server token")
+	ErrorInvalidServerToken = errors.New("invalid server token")
 )
 
 type ServerTokenRequest struct {
@@ -62,11 +62,11 @@ func (s *OAuthSession) DecryptServerToken(tokenString string, sourceClientId str
 	}
 
 	if token.Source != sourceClientId {
-		return token, INVALID_SERVER_TOKEN
+		return token, ErrorInvalidServerToken
 	}
 
 	if time.Now().After(time.Unix(token.ExpiryTime, 0)) {
-		return token, INVALID_SERVER_TOKEN
+		return token, ErrorInvalidServerToken
 	}
 
 	return token, nil

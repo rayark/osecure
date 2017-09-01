@@ -10,13 +10,10 @@ import (
 type TokenVerifier struct {
 	IntrospectTokenFunc IntrospectTokenFunc
 	GetPermissionsFunc  GetPermissionsFunc
-	//IsSubjectGrantedFunc IsSubjectGrantedFunc
 }
 
 type IntrospectTokenFunc func(accessToken string) (subject string, token *oauth2.Token, err error)
 type GetPermissionsFunc func(subject string, token *oauth2.Token) (permissions []string, err error)
-
-//type IsSubjectGrantedFunc func(subject string) (bool, error)
 
 func MakeToken(tokenType string, accessToken string, expireAt int64) *oauth2.Token {
 	return &oauth2.Token{
