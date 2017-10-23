@@ -46,7 +46,7 @@ func GoogleIntrospection() osecure.IntrospectTokenFunc {
 				return
 			}
 
-			err = errors.New(fmt.Sprintf("cannot introspect token: introspection API error: %s\n%s", resp.StatusCode, string(respData)))
+			err = errors.New(fmt.Sprintf("cannot introspect token: introspection API error:\nstatus code: %d\n%s", resp.StatusCode, string(respData)))
 			return
 		}
 
