@@ -35,6 +35,7 @@ func init() {
 
 type authSessionData struct {
 	Subject             string
+	Audience            string
 	Token               *oauth2.Token
 	Permissions         []string
 	PermissionsExpireAt time.Time
@@ -59,12 +60,13 @@ type OAuthConfig struct {
 	ServerTokenEncryptionKey string   `yaml:"server_token_encryption_key" env:"server_token_encryption_key"`
 }
 
-func newAuthSessionData(subject string, token *oauth2.Token) *authSessionData {
+func newAuthSessionData(subject string, audience string, token *oauth2.Token) *authSessionData {
 	if token.Expiry.IsZero() {
 		token.Expiry = time.Now().Add(time.Duration(SessionExpireTime) * time.Second)
 	}
 	return &authSessionData{
 		Subject:             subject,
+		Audience:            audience,
 		Token:               token,
 		Permissions:         []string{},
 		PermissionsExpireAt: time.Time{}, // Zero time
@@ -157,7 +159,7 @@ func (s *OAuthSession) ensurePermUpdated(w http.ResponseWriter, r *http.Request,
 		return nil
 	}
 
-	permissions, err := s.tokenVerifier.GetPermissionsFunc(data.Subject, data.Token)
+	permissions, err := s.tokenVerifier.GetPermissionsFunc(data.Subject, data.Audience, data.Token)
 	if err != nil {
 		return err
 	}
@@ -210,23 +212,23 @@ func (s *OAuthSession) HasPermission(w http.ResponseWriter, r *http.Request, per
 func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*authSessionData, error) {
 	data := s.getAuthSessionDataFromCookie(r)
 	if data == nil || data.isTokenExpired() {
-		subject, token, err := s.getAndIntrospectBearerToken(r)
+		subject, audience, token, err := s.getAndIntrospectBearerToken(r)
 		if err != nil {
 			return nil, err
 		}
 
-		data = newAuthSessionData(subject, token)
+		data = newAuthSessionData(subject, audience, token)
 	}
 	return data, nil
 }
 
-func (s *OAuthSession) getAndIntrospectBearerToken(r *http.Request) (subject string, token *oauth2.Token, err error) {
+func (s *OAuthSession) getAndIntrospectBearerToken(r *http.Request) (subject string, audience string, token *oauth2.Token, err error) {
 	bearerToken, err := s.getBearerToken(r)
 	if err != nil {
 		return
 	}
 
-	subject, token, err = s.tokenVerifier.IntrospectTokenFunc(bearerToken)
+	subject, audience, token, err = s.tokenVerifier.IntrospectTokenFunc(bearerToken)
 	return
 }
 
@@ -248,13 +250,13 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// TODO: how to get subject (account ID) when using exchange code only?
-	subject, _, err := s.tokenVerifier.IntrospectTokenFunc(token.AccessToken)
+	subject, audience, _, err := s.tokenVerifier.IntrospectTokenFunc(token.AccessToken)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
 
-	err = s.issueAuthCookie(w, r, newAuthSessionData(subject, token))
+	err = s.issueAuthCookie(w, r, newAuthSessionData(subject, audience, token))
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return

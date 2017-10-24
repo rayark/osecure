@@ -22,7 +22,7 @@ const (
 // predefined token introspection func
 
 func GoogleIntrospection() osecure.IntrospectTokenFunc {
-	return func(accessToken string) (subject string, token *oauth2.Token, err error) {
+	return func(accessToken string) (subject string, audience string, token *oauth2.Token, err error) {
 		req, err := http.NewRequest(http.MethodGet, TokenEndpointURL, nil)
 		if err != nil {
 			return
@@ -52,6 +52,7 @@ func GoogleIntrospection() osecure.IntrospectTokenFunc {
 
 		var result struct {
 			Subject  string `json:"sub"`
+			Audience string `json:"aud"`
 			ExpireAt int64  `json:"exp,string"`
 		}
 
@@ -61,6 +62,7 @@ func GoogleIntrospection() osecure.IntrospectTokenFunc {
 		}
 
 		subject = result.Subject
+		audience = result.Audience
 		token = osecure.MakeBearerToken(accessToken, result.ExpireAt)
 		return
 	}
@@ -74,7 +76,7 @@ func CommonPermissionRoles(roles []string) osecure.GetPermissionsFunc {
 	internalRoles := make([]string, len(roles))
 	copy(internalRoles, roles)
 
-	return func(subject string, token *oauth2.Token) (permissions []string, err error) {
+	return func(subject string, audience string, token *oauth2.Token) (permissions []string, err error) {
 		return internalRoles, nil
 	}
 
@@ -89,7 +91,7 @@ func PredefinedPermissionRoles(roleSubjectsMap map[string][]string) osecure.GetP
 		}
 	}
 
-	return func(subject string, token *oauth2.Token) (permissions []string, err error) {
+	return func(subject string, audience string, token *oauth2.Token) (permissions []string, err error) {
 		roles, ok := subjectRolesMap[subject]
 		if !ok {
 			return nil, osecure.ErrorCannotFoundCurrentSubject
@@ -101,7 +103,7 @@ func PredefinedPermissionRoles(roleSubjectsMap map[string][]string) osecure.GetP
 
 // sentry permission
 func SentryPermission(permissionsURL string) osecure.GetPermissionsFunc {
-	return func(subject string, token *oauth2.Token) (permissions []string, err error) {
+	return func(subject string, audience string, token *oauth2.Token) (permissions []string, err error) {
 		client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
 
 		resp, err := client.Get(permissionsURL)
