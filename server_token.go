@@ -12,6 +12,7 @@ import (
 
 var (
 	INVALID_SERVER_TOKEN = errors.New("invalid server token")
+	PERMISSION_DENIED    = errors.New("permission denied")
 )
 
 type ServerTokenRequest struct {
@@ -40,6 +41,10 @@ func (s *OAuthSession) GetServerToken(targetClientId string) (*ServerTokenReply,
 	resp, err := http.PostForm(s.serverTokenURL, url.Values{"id": {s.client.ClientID}, "secret": {secret}})
 	if err != nil {
 		return nil, err
+	}
+
+	if resp.StatusCode == 403 {
+		return nil, PERMISSION_DENIED
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
