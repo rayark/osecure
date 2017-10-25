@@ -20,6 +20,7 @@ var (
 	ErrorInvalidSession                   = errors.New("invalid session")
 	ErrorInvalidAuthorizationHeaderFormat = errors.New("invalid authorization header format")
 	ErrorUnsupportedAuthorizationType     = errors.New("unsupported authorization type")
+	ErrorInvalidAudience                  = errors.New("invalid audience (a.k.a. client ID)")
 	ErrorCannotFoundCurrentSubject        = errors.New("cannot found current subject (a.k.a. user ID)")
 )
 
@@ -274,7 +275,7 @@ func (s *OAuthSession) getBearerToken(r *http.Request) (string, error) {
 	}
 
 	tokenType := authorizationData[0]
-	if tokenType != "Bearer" {
+	if strings.ToLower(tokenType) != "bearer" {
 		return "", ErrorUnsupportedAuthorizationType
 	}
 
