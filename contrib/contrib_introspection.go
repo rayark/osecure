@@ -114,7 +114,7 @@ func SentryPermission(permissionsURL string) osecure.GetPermissionsFunc {
 	return func(subject string, audience string, token *oauth2.Token) (permissions []string, err error) {
 		client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
 
-		resp, err := client.Get(permissionsURL)
+		resp, err := client.Post(permissionsURL, "application/x-www-form-urlencoded", nil)
 		if err != nil {
 			return
 		}
