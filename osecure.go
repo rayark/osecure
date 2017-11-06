@@ -108,8 +108,8 @@ func NewOAuthSession(name string, oauthConf *OAuthConfig, cookieConf *CookieConf
 // Secured is a http middleware to check if the current user has logged in.
 func (s *OAuthSession) Secured(h http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
-		if !s.isAuthorized(r) {
-			s.startOAuth(w, r)
+		if !s.IsAuthorized(r) {
+			s.StartOAuth(w, r)
 			return
 		}
 		h.ServeHTTP(w, r)
@@ -126,7 +126,7 @@ func (s *OAuthSession) ExpireSession(redirect string) http.Handler {
 	return http.HandlerFunc(fn)
 }
 
-func (s *OAuthSession) isAuthorized(r *http.Request) bool {
+func (s *OAuthSession) IsAuthorized(r *http.Request) bool {
 	data := s.getAuthSessionDataFromRequest(r)
 	if data == nil || data.isExpired() {
 		return false
@@ -214,7 +214,7 @@ func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) *authSessi
 
 }
 
-func (s *OAuthSession) startOAuth(w http.ResponseWriter, r *http.Request) {
+func (s *OAuthSession) StartOAuth(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, s.client.AuthCodeURL(r.RequestURI), 303)
 }
 
