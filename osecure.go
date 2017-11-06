@@ -7,12 +7,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"github.com/gorilla/securecookie"
-	"github.com/gorilla/sessions"
-	"golang.org/x/oauth2"
 	"net/http"
 	"sort"
 	"time"
+
+	"github.com/gorilla/securecookie"
+	"github.com/gorilla/sessions"
+	"golang.org/x/oauth2"
 )
 
 var (
