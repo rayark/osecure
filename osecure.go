@@ -29,6 +29,7 @@ func init() {
 type authSessionData struct {
 	Token        oauth2.Token
 	ExpireAt     time.Time
+	Username     string
 	Permissions  []string
 	PermExpireAt time.Time
 }
@@ -47,6 +48,7 @@ type OAuthConfig struct {
 	Secret                   string `yaml:"secret" env:"secret"`
 	AuthURL                  string `yaml:"auth_url" env:"auth_url"`
 	TokenURL                 string `yaml:"token_url" env:"token_url"`
+	UsernameURL              string `yaml:"username_url" env:"username_url"`
 	PermissionsURL           string `yaml:"permissions_url" env:"permissions_url"`
 	ServerTokenURL           string `yaml:"server_token_url" env:"server_token_url"`
 	ServerTokenEncryptionKey string `yaml:"server_token_encryption_key" env:"server_token_encryption_key"`
@@ -73,6 +75,7 @@ type OAuthSession struct {
 	name                     string
 	cookieStore              *sessions.CookieStore
 	client                   *oauth2.Config
+	usernameURL              string
 	permissionsURL           string
 	serverTokenURL           string
 	serverTokenEncryptionKey []byte
@@ -134,6 +137,48 @@ func (s *OAuthSession) IsAuthorized(r *http.Request) bool {
 	}
 
 	return true
+}
+
+// GetUsername returns the username of the login session.
+func (s *OAuthSession) GetUsername(w http.ResponseWriter, r *http.Request) string {
+	session, err := s.cookieStore.Get(r, s.name)
+	if err != nil {
+		return ""
+	}
+
+	v, found := session.Values["data"]
+	if !found {
+		return ""
+	}
+
+	data, ok := v.(*authSessionData)
+	if !ok {
+		return ""
+	}
+
+	if data.Username != "" {
+		return data.Username
+	}
+
+	client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(&data.Token))
+
+	resp, err := client.Get(s.usernameURL)
+	if err != nil {
+		panic(err)
+	}
+
+	var result struct {
+		Username string `json:"username"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	if err != nil {
+		panic(err)
+	}
+
+	data.Username = result.Username
+	s.issueAuthCookie(w, r, data)
+
+	return data.Username
 }
 
 func (s *OAuthSession) ensurePermUpdated(w http.ResponseWriter, r *http.Request, data *authSessionData) {
