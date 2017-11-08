@@ -103,6 +103,7 @@ func NewOAuthSession(name string, oauthConf *OAuthConfig, cookieConf *CookieConf
 		name:                     name,
 		cookieStore:              newCookieStore(cookieConf),
 		client:                   client,
+		usernameURL:              oauthConf.UsernameURL,
 		permissionsURL:           oauthConf.PermissionsURL,
 		serverTokenURL:           oauthConf.ServerTokenURL,
 		serverTokenEncryptionKey: serverTokenEncryptionKey,
