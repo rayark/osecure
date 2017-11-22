@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"net/url"
+	//"net/url"
 
 	"golang.org/x/oauth2"
 
@@ -115,7 +115,8 @@ func SentryPermission(permissionsURL string) osecure.GetPermissionsFunc {
 	return func(subject string, audience string, token *oauth2.Token) (permissions []string, err error) {
 		client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
 
-		resp, err := client.PostForm(permissionsURL, url.Values{})
+		//resp, err := client.PostForm(permissionsURL, url.Values{})
+		resp, err := client.Get(permissionsURL)
 		if err != nil {
 			return
 		}
