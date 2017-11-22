@@ -119,6 +119,18 @@ func SentryPermission(permissionsURL string) osecure.GetPermissionsFunc {
 		if err != nil {
 			return
 		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			var respData []byte
+			respData, err = ioutil.ReadAll(resp.Body)
+			if err != nil {
+				return
+			}
+
+			err = errors.New(fmt.Sprintf("cannot get permission: permission API error:\nstatus code: %d\n%s", resp.StatusCode, string(respData)))
+			return
+		}
 
 		var result struct {
 			Permissions []string `json:"permissions"`
