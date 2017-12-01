@@ -52,9 +52,11 @@ func GoogleIntrospection() osecure.IntrospectTokenFunc {
 		}
 
 		var result struct {
-			Subject  string `json:"sub"`
-			Audience string `json:"aud"`
-			ExpireAt int64  `json:"exp,string"`
+			Subject         string `json:"sub"`
+			Audience        string `json:"aud"`
+			ExpireAt        int64  `json:"exp,string"`
+			EMail           string `json:"email"`
+			IsEMailVerified bool   `json:"email_verified,string"`
 		}
 
 		err = json.NewDecoder(resp.Body).Decode(&result)
@@ -62,9 +64,17 @@ func GoogleIntrospection() osecure.IntrospectTokenFunc {
 			return
 		}
 
+		extra := make(map[string]interface{})
+		alias := []string{}
+		if result.IsEMailVerified && len(result.EMail) > 0 {
+			alias = []string{result.EMail}
+		}
+		extra["alias"] = alias
+
 		subject = result.Subject
 		audience = result.Audience
-		token = osecure.MakeBearerToken(accessToken, result.ExpireAt)
+		token = osecure.MakeBearerToken(accessToken, result.ExpireAt).WithExtra(extra)
+
 		return
 	}
 }
