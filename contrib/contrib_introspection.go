@@ -74,7 +74,6 @@ func GoogleIntrospection() osecure.IntrospectTokenFunc {
 		subject = result.Subject
 		audience = result.Audience
 		token = osecure.MakeBearerToken(accessToken, result.ExpireAt).WithExtra(extra)
-
 		return
 	}
 }
