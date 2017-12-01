@@ -65,11 +65,11 @@ func GoogleIntrospection() osecure.IntrospectTokenFunc {
 		}
 
 		extra := make(map[string]interface{})
-		alias := []string{}
+		aliases := []string{}
 		if result.IsEMailVerified && len(result.EMail) > 0 {
-			alias = []string{result.EMail}
+			aliases = []string{result.EMail}
 		}
-		extra["alias"] = alias
+		extra["aliases"] = aliases
 
 		subject = result.Subject
 		audience = result.Audience
