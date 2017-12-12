@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"time"
 	//"net/url"
 
 	"golang.org/x/oauth2"
@@ -74,6 +75,59 @@ func GoogleIntrospection() osecure.IntrospectTokenFunc {
 		subject = result.Subject
 		audience = result.Audience
 		token = osecure.MakeBearerToken(accessToken, result.ExpireAt).WithExtra(extra)
+		return
+	}
+}
+
+func SentryIntrospection(tokenInfoURL string) osecure.IntrospectTokenFunc {
+	return func(accessToken string) (subject string, audience string, token *oauth2.Token, err error) {
+		req, err := http.NewRequest(http.MethodPost, tokenInfoURL, nil)
+		if err != nil {
+			return
+		}
+
+		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", accessToken))
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			var respData []byte
+			respData, err = ioutil.ReadAll(resp.Body)
+			if err != nil {
+				return
+			}
+
+			err = errors.New(fmt.Sprintf("cannot introspect token: introspection API error:\nstatus code: %d\n%s", resp.StatusCode, string(respData)))
+			return
+		}
+
+		var result struct {
+			AccessToken  string `json:"access_token"`
+			TokenType    string `json:"token_type"`
+			RefreshToken string `json:"refresh_token"`
+			ExpiresIn    int64  `json:"expires_in"`
+			Username     string `json:"username"`
+			UserId       string `json:"user_id"`
+			ClientId     string `json:"client_id"`
+		}
+
+		err = json.NewDecoder(resp.Body).Decode(&result)
+		if err != nil {
+			return
+		}
+
+		extra := make(map[string]interface{})
+		extra["user_id"] = result.UserId
+
+		subject = result.Username
+		audience = result.ClientId
+		expireAt := time.Now().Unix() + result.ExpiresIn
+		token = osecure.MakeBearerToken(accessToken, expireAt).WithExtra(extra)
 		return
 	}
 }
