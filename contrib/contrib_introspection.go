@@ -24,7 +24,7 @@ const (
 // predefined token introspection func
 
 func GoogleIntrospection() osecure.IntrospectTokenFunc {
-	return func(accessToken string) (subject string, audience string, token *oauth2.Token, err error) {
+	return func(accessToken string) (subject string, audience string, expireAt int64, extra map[string]interface{}, err error) {
 		req, err := http.NewRequest(http.MethodGet, TokenEndpointURL, nil)
 		if err != nil {
 			return
@@ -65,22 +65,23 @@ func GoogleIntrospection() osecure.IntrospectTokenFunc {
 			return
 		}
 
-		extra := make(map[string]interface{})
+		extraData := make(map[string]interface{})
 		aliases := []string{}
 		if result.IsEMailVerified && len(result.EMail) > 0 {
 			aliases = []string{result.EMail}
 		}
-		extra["aliases"] = aliases
+		extraData["aliases"] = aliases
 
 		subject = result.Subject
 		audience = result.Audience
-		token = osecure.MakeBearerToken(accessToken, result.ExpireAt).WithExtra(extra)
+		expireAt = result.ExpireAt
+		extra = extraData
 		return
 	}
 }
 
 func SentryIntrospection(tokenInfoURL string) osecure.IntrospectTokenFunc {
-	return func(accessToken string) (subject string, audience string, token *oauth2.Token, err error) {
+	return func(accessToken string) (subject string, audience string, expireAt int64, extra map[string]interface{}, err error) {
 		req, err := http.NewRequest(http.MethodPost, tokenInfoURL, nil)
 		if err != nil {
 			return
@@ -121,13 +122,13 @@ func SentryIntrospection(tokenInfoURL string) osecure.IntrospectTokenFunc {
 			return
 		}
 
-		extra := make(map[string]interface{})
-		extra["user_id"] = result.UserId
+		extraData := make(map[string]interface{})
+		extraData["user_id"] = result.UserId
 
 		subject = result.Username
 		audience = result.ClientId
-		expireAt := time.Now().Unix() + result.ExpiresIn
-		token = osecure.MakeBearerToken(accessToken, expireAt).WithExtra(extra)
+		expireAt = time.Now().Unix() + result.ExpiresIn
+		extra = extraData
 		return
 	}
 }

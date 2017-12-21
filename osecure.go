@@ -34,12 +34,34 @@ func init() {
 	gob.Register(&authSessionData{})
 }
 
+type authSessionIntrospectedData struct {
+	Subject  string
+	Audience string
+}
+
 type authSessionData struct {
-	Subject             string
-	Audience            string
 	Token               *oauth2.Token
 	Permissions         []string
 	PermissionsExpireAt time.Time
+}
+
+func newAuthSessionData(token *oauth2.Token) *authSessionData {
+	if token.Expiry.IsZero() {
+		token.Expiry = time.Now().Add(time.Duration(SessionExpireTime) * time.Second)
+	}
+	return &authSessionData{
+		Token:               token,
+		Permissions:         []string{},
+		PermissionsExpireAt: time.Time{}, // Zero time
+	}
+}
+
+func (data *authSessionData) isTokenExpired() bool {
+	return data.Token.Expiry.Before(time.Now())
+}
+
+func (data *authSessionData) isPermissionsExpired() bool {
+	return data.PermissionsExpireAt.Before(time.Now())
 }
 
 // CookieConfig is a config of github.com/gorilla/securecookie. Recommended
@@ -59,27 +81,6 @@ type OAuthConfig struct {
 	TokenURL                 string   `yaml:"token_url" env:"token_url"`
 	ServerTokenURL           string   `yaml:"server_token_url" env:"server_token_url"`
 	ServerTokenEncryptionKey string   `yaml:"server_token_encryption_key" env:"server_token_encryption_key"`
-}
-
-func newAuthSessionData(subject string, audience string, token *oauth2.Token) *authSessionData {
-	if token.Expiry.IsZero() {
-		token.Expiry = time.Now().Add(time.Duration(SessionExpireTime) * time.Second)
-	}
-	return &authSessionData{
-		Subject:             subject,
-		Audience:            audience,
-		Token:               token,
-		Permissions:         []string{},
-		PermissionsExpireAt: time.Time{}, // Zero time
-	}
-}
-
-func (data *authSessionData) isTokenExpired() bool {
-	return data.Token.Expiry.Before(time.Now())
-}
-
-func (data *authSessionData) isPermissionsExpired() bool {
-	return data.PermissionsExpireAt.Before(time.Now())
 }
 
 type OAuthSession struct {
@@ -139,7 +140,7 @@ func (s *OAuthSession) ExpireSession(redirect string) http.HandlerFunc {
 }
 
 func (s *OAuthSession) isAuthorized(w http.ResponseWriter, r *http.Request) bool {
-	data, err := s.getAuthSessionDataFromRequest(r)
+	data, _, isTokenFromAuthorizationHeader, err := s.getAuthSessionDataFromRequest(r)
 	if err != nil {
 		return false
 	}
@@ -147,54 +148,14 @@ func (s *OAuthSession) isAuthorized(w http.ResponseWriter, r *http.Request) bool
 		return false
 	}
 
-	err = s.issueAuthCookie(w, r, data)
-	if err != nil {
-		return false
+	if isTokenFromAuthorizationHeader {
+		err = s.issueAuthCookie(w, r, data)
+		if err != nil {
+			return false
+		}
 	}
 
 	return true
-}
-
-func (s *OAuthSession) ensurePermUpdated(w http.ResponseWriter, r *http.Request, data *authSessionData) error {
-	if !data.isPermissionsExpired() {
-		return nil
-	}
-
-	permissions, err := s.tokenVerifier.GetPermissionsFunc(data.Subject, data.Audience, data.Token)
-	if err != nil {
-		return err
-	}
-
-	data.Permissions = permissions
-	data.PermissionsExpireAt = time.Now().Add(time.Duration(PermissionExpireTime) * time.Second)
-
-	// Sort the string, as sort.SearchStrings needs sorted []string.
-	sort.Strings(data.Permissions)
-
-	err = s.issueAuthCookie(w, r, data)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// GetPermissions lists the permissions of the current user and client.
-func (s *OAuthSession) GetPermissions(w http.ResponseWriter, r *http.Request) ([]string, error) {
-	data, err := s.getAuthSessionDataFromRequest(r)
-	if err != nil {
-		return nil, err
-	}
-	if data == nil || data.isTokenExpired() {
-		return nil, ErrorInvalidSession
-	}
-
-	err = s.ensurePermUpdated(w, r, data)
-	if err != nil {
-		return nil, err
-	}
-
-	return data.Permissions, nil
 }
 
 // HasPermission checks if the current user has such permission.
@@ -210,28 +171,97 @@ func (s *OAuthSession) HasPermission(w http.ResponseWriter, r *http.Request, per
 	return result
 }
 
-func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*authSessionData, error) {
-	data := s.getAuthSessionDataFromCookie(r)
+// GetPermissions lists the permissions of the current user and client.
+func (s *OAuthSession) GetPermissions(w http.ResponseWriter, r *http.Request) ([]string, error) {
+	data, introspectedData, isTokenFromAuthorizationHeader, err := s.getAuthSessionDataFromRequest(r)
+	if err != nil {
+		return nil, err
+	}
 	if data == nil || data.isTokenExpired() {
-		subject, audience, token, err := s.getAndIntrospectBearerToken(r)
+		return nil, ErrorInvalidSession
+	}
+
+	isPermissionUpdated, err := s.ensurePermUpdated(w, r, data, introspectedData)
+	if err != nil {
+		return nil, err
+	}
+
+	if isTokenFromAuthorizationHeader || isPermissionUpdated {
+		err = s.issueAuthCookie(w, r, data)
 		if err != nil {
 			return nil, err
 		}
-
-		data = newAuthSessionData(subject, audience, token)
 	}
-	return data, nil
+
+	return data.Permissions, nil
 }
 
-func (s *OAuthSession) getAndIntrospectBearerToken(r *http.Request) (subject string, audience string, token *oauth2.Token, err error) {
+func (s *OAuthSession) ensurePermUpdated(w http.ResponseWriter, r *http.Request, data *authSessionData, introspectedData *authSessionIntrospectedData) (bool, error) {
+	if !data.isPermissionsExpired() {
+		return false, nil
+	}
+
+	permissions, err := s.tokenVerifier.GetPermissionsFunc(introspectedData.Subject, introspectedData.Audience, data.Token)
+	if err != nil {
+		return false, err
+	}
+
+	data.Permissions = permissions
+	data.PermissionsExpireAt = time.Now().Add(time.Duration(PermissionExpireTime) * time.Second)
+
+	// Sort the string, as sort.SearchStrings needs sorted []string.
+	sort.Strings(data.Permissions)
+
+	return true, nil
+}
+
+func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*authSessionData, *authSessionIntrospectedData, bool, error) {
+	var accessToken string
+	var isTokenFromAuthorizationHeader bool
+
+	data := s.getAuthSessionDataFromCookie(r)
+	if data == nil || data.isTokenExpired() {
+		var err error
+		accessToken, err = s.getBearerToken(r)
+		if err != nil {
+			return nil, nil, false, err
+		}
+
+		isTokenFromAuthorizationHeader = true
+	} else {
+		accessToken = data.Token.AccessToken
+		isTokenFromAuthorizationHeader = false
+	}
+
+	subject, audience, expireAt, extra, err := s.tokenVerifier.IntrospectTokenFunc(accessToken)
+	if err != nil {
+		return nil, nil, false, err
+	}
+
+	if isTokenFromAuthorizationHeader {
+		token := makeBearerToken(accessToken, expireAt).WithExtra(extra)
+		data = newAuthSessionData(token)
+	}
+
+	introspectedData := &authSessionIntrospectedData{
+		Subject:  subject,
+		Audience: audience,
+	}
+
+	return data, introspectedData, isTokenFromAuthorizationHeader, nil
+}
+
+/*
+func (s *OAuthSession) getAndIntrospectBearerToken(r *http.Request) (subject string, audience string, expireAt int64, extra map[string]interface{}, err error) {
 	bearerToken, err := s.getBearerToken(r)
 	if err != nil {
 		return
 	}
 
-	subject, audience, token, err = s.tokenVerifier.IntrospectTokenFunc(bearerToken)
+	subject, audience, expireAt, extra, err = s.tokenVerifier.IntrospectTokenFunc(bearerToken)
 	return
 }
+*/
 
 func (s *OAuthSession) startOAuth(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, s.client.AuthCodeURL(r.RequestURI), 303)
@@ -251,19 +281,31 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// TODO: how to get subject (account ID) when using exchange code only?
-	subject, audience, _, err := s.tokenVerifier.IntrospectTokenFunc(token.AccessToken)
+	/*subject, audience, _, err := s.tokenVerifier.IntrospectTokenFunc(token.AccessToken)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
-	}
+	}*/
 
-	err = s.issueAuthCookie(w, r, newAuthSessionData(subject, audience, token))
+	err = s.issueAuthCookie(w, r, newAuthSessionData(token))
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
 
 	http.Redirect(w, r, cont, 303)
+}
+
+func makeToken(tokenType string, accessToken string, expireAt int64) *oauth2.Token {
+	return &oauth2.Token{
+		AccessToken: accessToken,
+		TokenType:   tokenType,
+		Expiry:      time.Unix(expireAt, 0),
+	}
+}
+
+func makeBearerToken(accessToken string, expireAt int64) *oauth2.Token {
+	return makeToken("Bearer", accessToken, expireAt)
 }
 
 func (s *OAuthSession) getBearerToken(r *http.Request) (string, error) {
