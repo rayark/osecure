@@ -40,16 +40,21 @@ type authSessionIntrospectedData struct {
 }
 
 type authSessionData struct {
+	//	Subject             string
+	//	Audience            string
 	Token               *oauth2.Token
 	Permissions         []string
 	PermissionsExpireAt time.Time
 }
 
+//func newAuthSessionData(subject string, audience string, token *oauth2.Token) *authSessionData {
 func newAuthSessionData(token *oauth2.Token) *authSessionData {
 	if token.Expiry.IsZero() {
 		token.Expiry = time.Now().Add(time.Duration(SessionExpireTime) * time.Second)
 	}
 	return &authSessionData{
+		//Subject:             subject,
+		//Audience:            audience,
 		Token:               token,
 		Permissions:         []string{},
 		PermissionsExpireAt: time.Time{}, // Zero time
@@ -140,6 +145,7 @@ func (s *OAuthSession) ExpireSession(redirect string) http.HandlerFunc {
 }
 
 func (s *OAuthSession) isAuthorized(w http.ResponseWriter, r *http.Request) bool {
+	//data, isTokenFromAuthorizationHeader, err := s.getAuthSessionDataFromRequest(r)
 	data, _, isTokenFromAuthorizationHeader, err := s.getAuthSessionDataFromRequest(r)
 	if err != nil {
 		return false
@@ -173,6 +179,7 @@ func (s *OAuthSession) HasPermission(w http.ResponseWriter, r *http.Request, per
 
 // GetPermissions lists the permissions of the current user and client.
 func (s *OAuthSession) GetPermissions(w http.ResponseWriter, r *http.Request) ([]string, error) {
+	//data, isTokenFromAuthorizationHeader, err := s.getAuthSessionDataFromRequest(r)
 	data, introspectedData, isTokenFromAuthorizationHeader, err := s.getAuthSessionDataFromRequest(r)
 	if err != nil {
 		return nil, err
@@ -181,6 +188,7 @@ func (s *OAuthSession) GetPermissions(w http.ResponseWriter, r *http.Request) ([
 		return nil, ErrorInvalidSession
 	}
 
+	//isPermissionUpdated, err := s.ensurePermUpdated(w, r, data)
 	isPermissionUpdated, err := s.ensurePermUpdated(w, r, data, introspectedData)
 	if err != nil {
 		return nil, err
@@ -196,11 +204,13 @@ func (s *OAuthSession) GetPermissions(w http.ResponseWriter, r *http.Request) ([
 	return data.Permissions, nil
 }
 
+//func (s *OAuthSession) ensurePermUpdated(w http.ResponseWriter, r *http.Request, data *authSessionData) (bool, error) {
 func (s *OAuthSession) ensurePermUpdated(w http.ResponseWriter, r *http.Request, data *authSessionData, introspectedData *authSessionIntrospectedData) (bool, error) {
 	if !data.isPermissionsExpired() {
 		return false, nil
 	}
 
+	//permissions, err := s.tokenVerifier.GetPermissionsFunc(data.Subject, data.Audience, data.Token)
 	permissions, err := s.tokenVerifier.GetPermissionsFunc(introspectedData.Subject, introspectedData.Audience, data.Token)
 	if err != nil {
 		return false, err
@@ -252,13 +262,40 @@ func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*authSess
 }
 
 /*
-func (s *OAuthSession) getAndIntrospectBearerToken(r *http.Request) (subject string, audience string, expireAt int64, extra map[string]interface{}, err error) {
+func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*authSessionData, bool, error) {
+	var isTokenFromAuthorizationHeader bool
+
+	data := s.getAuthSessionDataFromCookie(r)
+	if data == nil || data.isTokenExpired() {
+		subject, audience, token, err := s.getAndIntrospectBearerToken(r)
+		if err != nil {
+			return nil, false, err
+		}
+
+		data = newAuthSessionData(subject, audience, token)
+
+		isTokenFromAuthorizationHeader = true
+	} else {
+		isTokenFromAuthorizationHeader = false
+	}
+
+	return data, isTokenFromAuthorizationHeader, nil
+}
+
+func (s *OAuthSession) getAndIntrospectBearerToken(r *http.Request) (subject string, audience string, token *oauth2.Token, err error) {
 	bearerToken, err := s.getBearerToken(r)
 	if err != nil {
 		return
 	}
 
+	var expireAt int64
+	var extra map[string]interface{}
 	subject, audience, expireAt, extra, err = s.tokenVerifier.IntrospectTokenFunc(bearerToken)
+	if err != nil {
+		return
+	}
+
+	token = makeBearerToken(bearerToken, expireAt).WithExtra(extra)
 	return
 }
 */
@@ -281,12 +318,13 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// TODO: how to get subject (account ID) when using exchange code only?
-	/*subject, audience, _, err := s.tokenVerifier.IntrospectTokenFunc(token.AccessToken)
+	/*subject, audience, _, _, err := s.tokenVerifier.IntrospectTokenFunc(token.AccessToken)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}*/
 
+	//err = s.issueAuthCookie(w, r, newAuthSessionData(subject, audience, token))
 	err = s.issueAuthCookie(w, r, newAuthSessionData(token))
 	if err != nil {
 		http.Error(w, err.Error(), 500)
