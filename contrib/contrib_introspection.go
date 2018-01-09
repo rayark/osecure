@@ -136,23 +136,19 @@ func SentryIntrospection(tokenInfoURL string) osecure.IntrospectTokenFunc {
 // predefined permission getter func
 
 // everyone is granted in the same way
-func CommonPermissionRoles(thisAudience string, roles []string) osecure.GetPermissionsFunc {
+func CommonPermissionRoles(roles []string) osecure.GetPermissionsFunc {
 	//prevent from mutable roles
 	internalRoles := make([]string, len(roles))
 	copy(internalRoles, roles)
 
 	return func(subject string, audience string, token *oauth2.Token) (permissions []string, err error) {
-		if audience != thisAudience {
-			return nil, osecure.ErrorInvalidAudience
-		}
-
 		return internalRoles, nil
 	}
 
 }
 
 // predefined permission roles (a table to represent how to grant everyone's access)
-func PredefinedPermissionRoles(thisAudience string, roleSubjectsMap map[string][]string) osecure.GetPermissionsFunc {
+func PredefinedPermissionRoles(roleSubjectsMap map[string][]string) osecure.GetPermissionsFunc {
 	subjectRolesMap := make(map[string][]string)
 	for role, subjects := range roleSubjectsMap {
 		for _, subject := range subjects {
@@ -161,13 +157,9 @@ func PredefinedPermissionRoles(thisAudience string, roleSubjectsMap map[string][
 	}
 
 	return func(subject string, audience string, token *oauth2.Token) (permissions []string, err error) {
-		if audience != thisAudience {
-			return nil, osecure.ErrorInvalidAudience
-		}
-
 		roles, ok := subjectRolesMap[subject]
 		if !ok {
-			return nil, osecure.ErrorCannotFoundCurrentSubject
+			return nil, osecure.ErrorInvalidSubject
 		}
 		return roles, nil
 	}

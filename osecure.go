@@ -21,7 +21,7 @@ var (
 	ErrorInvalidAuthorizationHeaderFormat = errors.New("invalid authorization header format")
 	ErrorUnsupportedAuthorizationType     = errors.New("unsupported authorization type")
 	ErrorInvalidAudience                  = errors.New("invalid audience (a.k.a. client ID)")
-	ErrorCannotFoundCurrentSubject        = errors.New("cannot found current subject (a.k.a. user ID)")
+	ErrorInvalidSubject                   = errors.New("invalid subject (a.k.a. user ID)")
 )
 
 var (
@@ -248,6 +248,10 @@ func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*authSess
 		return nil, nil, false, err
 	}
 
+	if audience != s.client.ClientID {
+		return nil, nil, false, ErrorInvalidAudience
+	}
+
 	if isTokenFromAuthorizationHeader {
 		token := makeBearerToken(accessToken, expireAt).WithExtra(extra)
 		data = newAuthSessionData(token)
@@ -277,6 +281,10 @@ func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*authSess
 		isTokenFromAuthorizationHeader = true
 	} else {
 		isTokenFromAuthorizationHeader = false
+	}
+
+	if data.Audience != s.client.ClientID {
+		return nil, false, ErrorInvalidAudience
 	}
 
 	return data, isTokenFromAuthorizationHeader, nil
