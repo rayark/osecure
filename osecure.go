@@ -30,29 +30,30 @@ var (
 )
 
 func init() {
-	gob.Register(&time.Time{})
-	gob.Register(&authSessionData{})
-}
-
-type authSessionIntrospectedData struct {
-	Subject  string
-	Audience string
+	//gob.Register(&time.Time{})
+	gob.Register(&authSessionCookieData{})
 }
 
 type authSessionData struct {
-	//	Subject             string
-	//	Audience            string
+	Subject  string //
+	Audience string //
+	*authSessionCookieData
+}
+
+type authSessionCookieData struct {
+	//Subject             string
+	//Audience            string
 	Token               *oauth2.Token
 	Permissions         []string
 	PermissionsExpireAt time.Time
 }
 
-//func newAuthSessionData(subject string, audience string, token *oauth2.Token) *authSessionData {
-func newAuthSessionData(token *oauth2.Token) *authSessionData {
+//func newAuthSessionCookieData(subject string, audience string, token *oauth2.Token) *authSessionCookieData {
+func newAuthSessionCookieData(token *oauth2.Token) *authSessionCookieData {
 	if token.Expiry.IsZero() {
 		token.Expiry = time.Now().Add(time.Duration(SessionExpireTime) * time.Second)
 	}
-	return &authSessionData{
+	return &authSessionCookieData{
 		//Subject:             subject,
 		//Audience:            audience,
 		Token:               token,
@@ -61,12 +62,12 @@ func newAuthSessionData(token *oauth2.Token) *authSessionData {
 	}
 }
 
-func (data *authSessionData) isTokenExpired() bool {
-	return data.Token.Expiry.Before(time.Now())
+func (cookieData *authSessionCookieData) isTokenExpired() bool {
+	return cookieData.Token.Expiry.Before(time.Now())
 }
 
-func (data *authSessionData) isPermissionsExpired() bool {
-	return data.PermissionsExpireAt.Before(time.Now())
+func (cookieData *authSessionCookieData) isPermissionsExpired() bool {
+	return cookieData.PermissionsExpireAt.Before(time.Now())
 }
 
 // CookieConfig is a config of github.com/gorilla/securecookie. Recommended
@@ -145,8 +146,7 @@ func (s *OAuthSession) ExpireSession(redirect string) http.HandlerFunc {
 }
 
 func (s *OAuthSession) isAuthorized(w http.ResponseWriter, r *http.Request) bool {
-	//data, isTokenFromAuthorizationHeader, err := s.getAuthSessionDataFromRequest(r)
-	data, _, isTokenFromAuthorizationHeader, err := s.getAuthSessionDataFromRequest(r)
+	data, isTokenFromAuthorizationHeader, err := s.getAuthSessionDataFromRequest(r)
 	if err != nil {
 		return false
 	}
@@ -155,7 +155,7 @@ func (s *OAuthSession) isAuthorized(w http.ResponseWriter, r *http.Request) bool
 	}
 
 	if isTokenFromAuthorizationHeader {
-		err = s.issueAuthCookie(w, r, data)
+		err = s.issueAuthCookie(w, r, data.authSessionCookieData)
 		if err != nil {
 			return false
 		}
@@ -179,8 +179,7 @@ func (s *OAuthSession) HasPermission(w http.ResponseWriter, r *http.Request, per
 
 // GetPermissions lists the permissions of the current user and client.
 func (s *OAuthSession) GetPermissions(w http.ResponseWriter, r *http.Request) ([]string, error) {
-	//data, isTokenFromAuthorizationHeader, err := s.getAuthSessionDataFromRequest(r)
-	data, introspectedData, isTokenFromAuthorizationHeader, err := s.getAuthSessionDataFromRequest(r)
+	data, isTokenFromAuthorizationHeader, err := s.getAuthSessionDataFromRequest(r)
 	if err != nil {
 		return nil, err
 	}
@@ -188,14 +187,13 @@ func (s *OAuthSession) GetPermissions(w http.ResponseWriter, r *http.Request) ([
 		return nil, ErrorInvalidSession
 	}
 
-	//isPermissionUpdated, err := s.ensurePermUpdated(w, r, data)
-	isPermissionUpdated, err := s.ensurePermUpdated(w, r, data, introspectedData)
+	isPermissionUpdated, err := s.ensurePermUpdated(w, r, data)
 	if err != nil {
 		return nil, err
 	}
 
 	if isTokenFromAuthorizationHeader || isPermissionUpdated {
-		err = s.issueAuthCookie(w, r, data)
+		err = s.issueAuthCookie(w, r, data.authSessionCookieData)
 		if err != nil {
 			return nil, err
 		}
@@ -204,14 +202,12 @@ func (s *OAuthSession) GetPermissions(w http.ResponseWriter, r *http.Request) ([
 	return data.Permissions, nil
 }
 
-//func (s *OAuthSession) ensurePermUpdated(w http.ResponseWriter, r *http.Request, data *authSessionData) (bool, error) {
-func (s *OAuthSession) ensurePermUpdated(w http.ResponseWriter, r *http.Request, data *authSessionData, introspectedData *authSessionIntrospectedData) (bool, error) {
+func (s *OAuthSession) ensurePermUpdated(w http.ResponseWriter, r *http.Request, data *authSessionData) (bool, error) {
 	if !data.isPermissionsExpired() {
 		return false, nil
 	}
 
-	//permissions, err := s.tokenVerifier.GetPermissionsFunc(data.Subject, data.Audience, data.Token)
-	permissions, err := s.tokenVerifier.GetPermissionsFunc(introspectedData.Subject, introspectedData.Audience, data.Token)
+	permissions, err := s.tokenVerifier.GetPermissionsFunc(data.Subject, data.Audience, data.Token)
 	if err != nil {
 		return false, err
 	}
@@ -225,79 +221,79 @@ func (s *OAuthSession) ensurePermUpdated(w http.ResponseWriter, r *http.Request,
 	return true, nil
 }
 
-//func (s *OAuthSession) GetIntrospectedData(w http.ResponseWriter, r *http.Request) (*authSessionData, error) {
-func (s *OAuthSession) GetIntrospectedData(w http.ResponseWriter, r *http.Request) (*authSessionData, *authSessionIntrospectedData, error) {
-	//data, _, err := s.getAuthSessionDataFromRequest(r)
-	data, introspectedData, _, err := s.getAuthSessionDataFromRequest(r)
+func (s *OAuthSession) GetSessionData(w http.ResponseWriter, r *http.Request) (*authSessionData, error) {
+	data, _, err := s.getAuthSessionDataFromRequest(r)
 	if err != nil {
-		//return nil, err
-		return nil, nil, err
+		return nil, err
 	}
 	if data == nil || data.isTokenExpired() {
-		//return nil, ErrorInvalidSession
-		return nil, nil, ErrorInvalidSession
+		return nil, ErrorInvalidSession
 	}
 
-	//return data, nil
-	return data, introspectedData, nil
+	return data, nil
 }
 
-func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*authSessionData, *authSessionIntrospectedData, bool, error) {
+func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*authSessionData, bool, error) {
 	var accessToken string
 	var isTokenFromAuthorizationHeader bool
 
-	data := s.getAuthSessionDataFromCookie(r)
-	if data == nil || data.isTokenExpired() {
+	cookieData := s.retrieveAuthCookie(r)
+	if cookieData == nil || cookieData.isTokenExpired() {
 		var err error
 		accessToken, err = s.getBearerToken(r)
 		if err != nil {
-			return nil, nil, false, err
+			return nil, false, err
 		}
 
 		isTokenFromAuthorizationHeader = true
 	} else {
-		accessToken = data.Token.AccessToken
+		accessToken = cookieData.Token.AccessToken
 		isTokenFromAuthorizationHeader = false
 	}
 
 	subject, audience, expireAt, extra, err := s.tokenVerifier.IntrospectTokenFunc(accessToken)
 	if err != nil {
-		return nil, nil, false, err
-	}
-
-	if audience != s.client.ClientID {
-		return nil, nil, false, ErrorInvalidAudience
+		return nil, false, err
 	}
 
 	if isTokenFromAuthorizationHeader {
 		token := makeBearerToken(accessToken, expireAt).WithExtra(extra)
-		data = newAuthSessionData(token)
+		cookieData = newAuthSessionCookieData(token)
 	}
 
-	introspectedData := &authSessionIntrospectedData{
-		Subject:  subject,
-		Audience: audience,
+	data := &authSessionData{
+		Subject:               subject,
+		Audience:              audience,
+		authSessionCookieData: cookieData,
 	}
 
-	return data, introspectedData, isTokenFromAuthorizationHeader, nil
+	if data.Audience != s.client.ClientID {
+		return nil, false, ErrorInvalidAudience
+	}
+
+	return data, isTokenFromAuthorizationHeader, nil
 }
 
 /*
 func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*authSessionData, bool, error) {
 	var isTokenFromAuthorizationHeader bool
 
-	data := s.getAuthSessionDataFromCookie(r)
-	if data == nil || data.isTokenExpired() {
+	cookieData := s.retrieveAuthCookie(r)
+	if cookieData == nil || cookieData.isTokenExpired() {
 		subject, audience, token, err := s.getAndIntrospectBearerToken(r)
 		if err != nil {
 			return nil, false, err
 		}
 
-		data = newAuthSessionData(subject, audience, token)
+		cookieData = newAuthSessionCookieData(subject, audience, token)
 
 		isTokenFromAuthorizationHeader = true
 	} else {
 		isTokenFromAuthorizationHeader = false
+	}
+
+	data := &authSessionData{
+		authSessionCookieData: cookieData,
 	}
 
 	if data.Audience != s.client.ClientID {
@@ -308,7 +304,8 @@ func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*authSess
 }
 
 func (s *OAuthSession) getAndIntrospectBearerToken(r *http.Request) (subject string, audience string, token *oauth2.Token, err error) {
-	bearerToken, err := s.getBearerToken(r)
+	var bearerToken string
+	bearerToken, err = s.getBearerToken(r)
 	if err != nil {
 		return
 	}
@@ -349,8 +346,8 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 		return
 	}*/
 
-	//err = s.issueAuthCookie(w, r, newAuthSessionData(subject, audience, token))
-	err = s.issueAuthCookie(w, r, newAuthSessionData(token))
+	//err = s.issueAuthCookie(w, r, newAuthSessionCookieData(subject, audience, token))
+	err = s.issueAuthCookie(w, r, newAuthSessionCookieData(token))
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -380,7 +377,7 @@ func (s *OAuthSession) getBearerToken(r *http.Request) (string, error) {
 	}
 
 	tokenType := authorizationData[0]
-	if strings.ToLower(tokenType) != "bearer" {
+	if !strings.EqualFold(tokenType, "bearer") {
 		return "", ErrorUnsupportedAuthorizationType
 	}
 
@@ -388,7 +385,7 @@ func (s *OAuthSession) getBearerToken(r *http.Request) (string, error) {
 	return bearerToken, nil
 }
 
-func (s *OAuthSession) getAuthSessionDataFromCookie(r *http.Request) *authSessionData {
+func (s *OAuthSession) retrieveAuthCookie(r *http.Request) *authSessionCookieData {
 	session, err := s.cookieStore.Get(r, s.name)
 	if err != nil {
 		return nil
@@ -399,20 +396,20 @@ func (s *OAuthSession) getAuthSessionDataFromCookie(r *http.Request) *authSessio
 		return nil
 	}
 
-	data, ok := v.(*authSessionData)
+	cookieData, ok := v.(*authSessionCookieData)
 	if !ok {
 		return nil
 	}
 
-	return data
+	return cookieData
 }
 
-func (s *OAuthSession) issueAuthCookie(w http.ResponseWriter, r *http.Request, data *authSessionData) error {
+func (s *OAuthSession) issueAuthCookie(w http.ResponseWriter, r *http.Request, cookieData *authSessionCookieData) error {
 	session, err := s.cookieStore.New(r, s.name)
 	if err != nil {
 		return err
 	}
-	session.Values["data"] = data
+	session.Values["data"] = cookieData
 	err = session.Save(r, w)
 	return err
 }
