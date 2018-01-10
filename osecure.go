@@ -225,6 +225,23 @@ func (s *OAuthSession) ensurePermUpdated(w http.ResponseWriter, r *http.Request,
 	return true, nil
 }
 
+//func (s *OAuthSession) GetIntrospectedData(w http.ResponseWriter, r *http.Request) (*authSessionData, error) {
+func (s *OAuthSession) GetIntrospectedData(w http.ResponseWriter, r *http.Request) (*authSessionData, *authSessionIntrospectedData, error) {
+	//data, _, err := s.getAuthSessionDataFromRequest(r)
+	data, introspectedData, _, err := s.getAuthSessionDataFromRequest(r)
+	if err != nil {
+		//return nil, err
+		return nil, nil, err
+	}
+	if data == nil || data.isTokenExpired() {
+		//return nil, ErrorInvalidSession
+		return nil, nil, ErrorInvalidSession
+	}
+
+	//return data, nil
+	return data, introspectedData, nil
+}
+
 func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*authSessionData, *authSessionIntrospectedData, bool, error) {
 	var accessToken string
 	var isTokenFromAuthorizationHeader bool
