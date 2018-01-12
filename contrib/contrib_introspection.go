@@ -24,7 +24,7 @@ const (
 // predefined token introspection func
 
 func GoogleIntrospection() osecure.IntrospectTokenFunc {
-	return func(accessToken string) (subject string, audience string, expireAt int64, extra map[string]interface{}, err error) {
+	return func(accessToken string) (userID string, clientID string, expireAt int64, extra map[string]interface{}, err error) {
 		req, err := http.NewRequest(http.MethodGet, TokenEndpointURL, nil)
 		if err != nil {
 			return
@@ -72,8 +72,8 @@ func GoogleIntrospection() osecure.IntrospectTokenFunc {
 		}
 		extraData["aliases"] = aliases
 
-		subject = result.Subject
-		audience = result.Audience
+		userID = result.Subject
+		clientID = result.Audience
 		expireAt = result.ExpireAt
 		extra = extraData
 		return
@@ -81,7 +81,7 @@ func GoogleIntrospection() osecure.IntrospectTokenFunc {
 }
 
 func SentryIntrospection(tokenInfoURL string) osecure.IntrospectTokenFunc {
-	return func(accessToken string) (subject string, audience string, expireAt int64, extra map[string]interface{}, err error) {
+	return func(accessToken string) (userID string, clientID string, expireAt int64, extra map[string]interface{}, err error) {
 		req, err := http.NewRequest(http.MethodPost, tokenInfoURL, nil)
 		if err != nil {
 			return
@@ -113,8 +113,8 @@ func SentryIntrospection(tokenInfoURL string) osecure.IntrospectTokenFunc {
 			RefreshToken string `json:"refresh_token"`
 			ExpiresIn    int64  `json:"expires_in"`
 			Username     string `json:"username"`
-			UserId       string `json:"user_id"`
-			ClientId     string `json:"client_id"`
+			UserID       string `json:"user_id"`
+			ClientID     string `json:"client_id"`
 		}
 
 		err = json.NewDecoder(resp.Body).Decode(&result)
@@ -123,10 +123,10 @@ func SentryIntrospection(tokenInfoURL string) osecure.IntrospectTokenFunc {
 		}
 
 		extraData := make(map[string]interface{})
-		extraData["user_id"] = result.UserId
+		extraData["user_id"] = result.UserID
 
-		subject = result.Username
-		audience = result.ClientId
+		userID = result.Username
+		clientID = result.ClientID
 		expireAt = time.Now().Unix() + result.ExpiresIn
 		extra = extraData
 		return
@@ -141,25 +141,25 @@ func CommonPermissionRoles(roles []string) osecure.GetPermissionsFunc {
 	internalRoles := make([]string, len(roles))
 	copy(internalRoles, roles)
 
-	return func(subject string, audience string, token *oauth2.Token) (permissions []string, err error) {
+	return func(userID string, clientID string, token *oauth2.Token) (permissions []string, err error) {
 		return internalRoles, nil
 	}
 
 }
 
 // predefined permission roles (a table to represent how to grant everyone's access)
-func PredefinedPermissionRoles(roleSubjectsMap map[string][]string) osecure.GetPermissionsFunc {
-	subjectRolesMap := make(map[string][]string)
-	for role, subjects := range roleSubjectsMap {
-		for _, subject := range subjects {
-			subjectRolesMap[subject] = append(subjectRolesMap[subject], role)
+func PredefinedPermissionRoles(roleUsersMap map[string][]string) osecure.GetPermissionsFunc {
+	userRolesMap := make(map[string][]string)
+	for role, userIDList := range roleUsersMap {
+		for _, userID := range userIDList {
+			userRolesMap[userID] = append(userRolesMap[userID], role)
 		}
 	}
 
-	return func(subject string, audience string, token *oauth2.Token) (permissions []string, err error) {
-		roles, ok := subjectRolesMap[subject]
+	return func(userID string, clientID string, token *oauth2.Token) (permissions []string, err error) {
+		roles, ok := userRolesMap[userID]
 		if !ok {
-			return nil, osecure.ErrorInvalidSubject
+			return nil, osecure.ErrorInvalidUserID
 		}
 		return roles, nil
 	}
@@ -168,7 +168,7 @@ func PredefinedPermissionRoles(roleSubjectsMap map[string][]string) osecure.GetP
 
 // sentry permission
 func SentryPermission(permissionsURL string) osecure.GetPermissionsFunc {
-	return func(subject string, audience string, token *oauth2.Token) (permissions []string, err error) {
+	return func(userID string, clientID string, token *oauth2.Token) (permissions []string, err error) {
 		client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
 
 		//resp, err := client.PostForm(permissionsURL, url.Values{})
