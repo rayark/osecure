@@ -29,10 +29,14 @@ var (
 	PermissionExpireTime = 600
 )
 
-type Set map[string]struct{}
+type set map[string]struct{}
 
-func (set Set) IsInSet(key string) bool {
-	_, ok := set[key]
+func (s set) add(x string) {
+	s[x] = struct{}{}
+}
+
+func (s set) contain(x string) bool {
+	_, ok := s[x]
 	return ok
 }
 
@@ -101,7 +105,7 @@ type OAuthSession struct {
 	name                     string
 	cookieStore              *sessions.CookieStore
 	client                   *oauth2.Config
-	appIDSet                 Set
+	appIDSet                 set
 	tokenVerifier            *TokenVerifier
 	serverTokenURL           string
 	serverTokenEncryptionKey []byte
@@ -120,9 +124,9 @@ func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConf
 		RedirectURL: callbackURL,
 	}
 
-	appIDSet := make(Set)
+	appIDSet := make(set)
 	for _, appID := range oauthConf.AppIDList {
-		appIDSet[appID] = struct{}{}
+		appIDSet.add(appID)
 	}
 
 	serverTokenEncryptionKey, err := hex.DecodeString(oauthConf.ServerTokenEncryptionKey)
@@ -338,7 +342,7 @@ func (s *OAuthSession) getAndIntrospectBearerToken(r *http.Request) (subject str
 */
 
 func (s *OAuthSession) isValidClientID(clientID string) bool {
-	return clientID == s.client.ClientID || s.appIDSet.IsInSet(clientID)
+	return clientID == s.client.ClientID || s.appIDSet.contain(clientID)
 }
 
 func (s *OAuthSession) startOAuth(w http.ResponseWriter, r *http.Request) {
