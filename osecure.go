@@ -29,6 +29,13 @@ var (
 	PermissionExpireTime = 600
 )
 
+type Set map[string]struct{}
+
+func (set Set) IsInSet(key string) bool {
+	_, ok := set[key]
+	return ok
+}
+
 func init() {
 	//gob.Register(&time.Time{})
 	gob.Register(&AuthSessionCookieData{})
@@ -85,6 +92,7 @@ type OAuthConfig struct {
 	Scopes                   []string `yaml:"scopes" env:"scopes"`
 	AuthURL                  string   `yaml:"auth_url" env:"auth_url"`
 	TokenURL                 string   `yaml:"token_url" env:"token_url"`
+	AppIDList                []string `yaml:"app_id_list" env:"app_id_list"`
 	ServerTokenURL           string   `yaml:"server_token_url" env:"server_token_url"`
 	ServerTokenEncryptionKey string   `yaml:"server_token_encryption_key" env:"server_token_encryption_key"`
 }
@@ -93,6 +101,7 @@ type OAuthSession struct {
 	name                     string
 	cookieStore              *sessions.CookieStore
 	client                   *oauth2.Config
+	appIDSet                 Set
 	tokenVerifier            *TokenVerifier
 	serverTokenURL           string
 	serverTokenEncryptionKey []byte
@@ -111,6 +120,11 @@ func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConf
 		RedirectURL: callbackURL,
 	}
 
+	appIDSet := make(Set)
+	for _, appID := range oauthConf.AppIDList {
+		appIDSet[appID] = struct{}{}
+	}
+
 	serverTokenEncryptionKey, err := hex.DecodeString(oauthConf.ServerTokenEncryptionKey)
 	if err != nil {
 		panic(err)
@@ -120,6 +134,7 @@ func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConf
 		name:                     name,
 		cookieStore:              newCookieStore(cookieConf),
 		client:                   client,
+		appIDSet:                 appIDSet,
 		tokenVerifier:            tokenVerifier,
 		serverTokenURL:           oauthConf.ServerTokenURL,
 		serverTokenEncryptionKey: serverTokenEncryptionKey,
@@ -267,7 +282,7 @@ func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*AuthSess
 		AuthSessionCookieData: cookieData,
 	}
 
-	if data.Audience != s.client.ClientID {
+	if !s.isValidClientID(data.Audience) {
 		return nil, false, ErrorInvalidAudience
 	}
 
@@ -296,7 +311,7 @@ func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*AuthSess
 		AuthSessionCookieData: cookieData,
 	}
 
-	if data.Audience != s.client.ClientID {
+	if !s.isValidClientID(data.Audience) {
 		return nil, false, ErrorInvalidAudience
 	}
 
@@ -321,6 +336,10 @@ func (s *OAuthSession) getAndIntrospectBearerToken(r *http.Request) (subject str
 	return
 }
 */
+
+func (s *OAuthSession) isValidClientID(clientID string) bool {
+	return clientID == s.client.ClientID || s.appIDSet.IsInSet(clientID)
+}
 
 func (s *OAuthSession) startOAuth(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, s.client.AuthCodeURL(r.RequestURI), 303)
