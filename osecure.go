@@ -148,7 +148,8 @@ func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConf
 // Secured is a http middleware to check if the current user has logged in.
 func (s *OAuthSession) Secured(h http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !s.isAuthorized(w, r) {
+		_, err := s.Authorize(w, r)
+		if err != nil {
 			s.startOAuth(w, r)
 			return
 		}
@@ -164,31 +165,9 @@ func (s *OAuthSession) ExpireSession(redirect string) http.HandlerFunc {
 	}
 }
 
-func (s *OAuthSession) isAuthorized(w http.ResponseWriter, r *http.Request) bool {
-	data, isTokenFromAuthorizationHeader, err := s.getAuthSessionDataFromRequest(r)
-	if err != nil {
-		return false
-	}
-	if data == nil || data.isTokenExpired() {
-		return false
-	}
-
-	if isTokenFromAuthorizationHeader {
-		err = s.issueAuthCookie(w, r, data.AuthSessionCookieData)
-		if err != nil {
-			return false
-		}
-	}
-
-	return true
-}
-
 // HasPermission checks if the current user has such permission.
-func (s *OAuthSession) HasPermission(w http.ResponseWriter, r *http.Request, permission string) bool {
-	perms, err := s.GetPermissions(w, r)
-	if err != nil {
-		return false
-	}
+func (data *AuthSessionData) HasPermission(permission string) bool {
+	perms := data.GetPermissions()
 
 	id := sort.SearchStrings(perms, permission)
 	result := id < len(perms) && perms[id] == permission
@@ -197,7 +176,23 @@ func (s *OAuthSession) HasPermission(w http.ResponseWriter, r *http.Request, per
 }
 
 // GetPermissions lists the permissions of the current user and client.
-func (s *OAuthSession) GetPermissions(w http.ResponseWriter, r *http.Request) ([]string, error) {
+func (data *AuthSessionData) GetPermissions() []string {
+	return data.Permissions
+}
+
+// GetUserID get user ID of the current user session.
+func (data *AuthSessionData) GetUserID() string {
+	return data.UserID
+}
+
+// GetClientID get client ID of the current user session.
+func (data *AuthSessionData) GetClientID() string {
+	return data.ClientID
+}
+
+// Authorize authorize user by verifying cookie or bearer token.
+// if user is authorized, return session data. else, return error.
+func (s *OAuthSession) Authorize(w http.ResponseWriter, r *http.Request) (*AuthSessionData, error) {
 	data, isTokenFromAuthorizationHeader, err := s.getAuthSessionDataFromRequest(r)
 	if err != nil {
 		return nil, err
@@ -218,7 +213,7 @@ func (s *OAuthSession) GetPermissions(w http.ResponseWriter, r *http.Request) ([
 		}
 	}
 
-	return data.Permissions, nil
+	return data, nil
 }
 
 func (s *OAuthSession) ensurePermUpdated(w http.ResponseWriter, r *http.Request, data *AuthSessionData) (bool, error) {
@@ -238,18 +233,6 @@ func (s *OAuthSession) ensurePermUpdated(w http.ResponseWriter, r *http.Request,
 	sort.Strings(data.Permissions)
 
 	return true, nil
-}
-
-func (s *OAuthSession) GetSessionData(w http.ResponseWriter, r *http.Request) (*AuthSessionData, error) {
-	data, _, err := s.getAuthSessionDataFromRequest(r)
-	if err != nil {
-		return nil, err
-	}
-	if data == nil || data.isTokenExpired() {
-		return nil, ErrorInvalidSession
-	}
-
-	return data, nil
 }
 
 func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*AuthSessionData, bool, error) {
