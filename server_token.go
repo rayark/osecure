@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	INVALID_SERVER_TOKEN = errors.New("invalid server token")
-	PERMISSION_DENIED    = errors.New("permission denied")
+	ErrorInvalidServerToken = errors.New("invalid server token")
+	ErrorPermissionDenied   = errors.New("permission denied")
 )
 
 type ServerTokenRequest struct {
@@ -44,7 +44,7 @@ func (s *OAuthSession) GetServerToken(targetClientId string) (*ServerTokenReply,
 	}
 
 	if resp.StatusCode == 403 {
-		return nil, PERMISSION_DENIED
+		return nil, ErrorPermissionDenied
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
@@ -67,11 +67,11 @@ func (s *OAuthSession) DecryptServerToken(tokenString string, sourceClientId str
 	}
 
 	if token.Source != sourceClientId {
-		return token, INVALID_SERVER_TOKEN
+		return token, ErrorInvalidServerToken
 	}
 
 	if time.Now().After(time.Unix(token.ExpiryTime, 0)) {
-		return token, INVALID_SERVER_TOKEN
+		return token, ErrorInvalidServerToken
 	}
 
 	return token, nil
