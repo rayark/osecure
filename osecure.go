@@ -145,15 +145,20 @@ func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConf
 	}
 }
 
-// Secured is a http middleware to check if the current user has logged in.
-func (s *OAuthSession) Secured(h http.Handler) http.HandlerFunc {
+// SecuredH is a http middleware for http.Handler to check if the current user has logged in.
+func (s *OAuthSession) SecuredH(h http.Handler) http.Handler {
+	return s.SecuredF(h.ServeHTTP)
+}
+
+// SecuredF is a http middleware for http.HandlerFunc to check if the current user has logged in.
+func (s *OAuthSession) SecuredF(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		_, err := s.Authorize(w, r)
 		if err != nil {
 			s.startOAuth(w, r)
 			return
 		}
-		h.ServeHTTP(w, r)
+		h(w, r)
 	}
 }
 
