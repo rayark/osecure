@@ -155,7 +155,7 @@ func (s *OAuthSession) SecuredF(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		_, err := s.Authorize(w, r)
 		if err != nil {
-			s.startOAuth(w, r)
+			s.StartOAuth(w, r)
 			return
 		}
 		h(w, r)
@@ -333,7 +333,8 @@ func (s *OAuthSession) isValidClientID(clientID string) bool {
 	return clientID == s.client.ClientID || s.appIDSet.contain(clientID)
 }
 
-func (s *OAuthSession) startOAuth(w http.ResponseWriter, r *http.Request) {
+// StartOAuth redirect to endpoint of OAuth service provider for OAuth flow.
+func (s *OAuthSession) StartOAuth(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, s.client.AuthCodeURL(r.RequestURI), 303)
 }
 
