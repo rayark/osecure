@@ -38,7 +38,7 @@ func (s *OAuthSession) GetServerToken(targetClientId string) (*ServerTokenReply,
 		return nil, err
 	}
 
-	resp, err := http.PostForm(s.serverTokenURL, url.Values{"id": {s.client.ClientID}, "secret": {secret}})
+	resp, err := http.PostForm(s.serverTokenURL, url.Values{"id": {s.interServerClientID}, "secret": {secret}})
 	if err != nil {
 		return nil, err
 	}

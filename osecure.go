@@ -97,6 +97,7 @@ type OAuthConfig struct {
 	AuthURL                  string   `yaml:"auth_url" env:"auth_url"`
 	TokenURL                 string   `yaml:"token_url" env:"token_url"`
 	AppIDList                []string `yaml:"app_id_list" env:"app_id_list"`
+	InterServerClientID      string   `yaml:"inter_server_client_id" env:"inter_server_client_id"`
 	ServerTokenURL           string   `yaml:"server_token_url" env:"server_token_url"`
 	ServerTokenEncryptionKey string   `yaml:"server_token_encryption_key" env:"server_token_encryption_key"`
 }
@@ -107,6 +108,7 @@ type OAuthSession struct {
 	client                   *oauth2.Config
 	appIDSet                 set
 	tokenVerifier            *TokenVerifier
+	interServerClientID      string
 	serverTokenURL           string
 	serverTokenEncryptionKey []byte
 }
@@ -140,6 +142,7 @@ func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConf
 		client:                   client,
 		appIDSet:                 appIDSet,
 		tokenVerifier:            tokenVerifier,
+		interServerClientID:      oauthConf.InterServerClientID,
 		serverTokenURL:           oauthConf.ServerTokenURL,
 		serverTokenEncryptionKey: serverTokenEncryptionKey,
 	}
