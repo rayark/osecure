@@ -263,9 +263,18 @@ func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*AuthSess
 		return nil, false, err
 	}
 
+	// restore token extra data whenever token is new or retrieved from cookie
+	var token *oauth2.Token
 	if isTokenFromAuthorizationHeader {
-		token := makeBearerToken(accessToken, expireAt).WithExtra(extra)
+		token = makeBearerToken(accessToken, expireAt)
+	} else {
+		token = cookieData.Token
+	}
+	token = token.WithExtra(extra)
+	if isTokenFromAuthorizationHeader {
 		cookieData = newAuthSessionCookieData(token)
+	} else {
+		cookieData.Token = token
 	}
 
 	data := &AuthSessionData{
