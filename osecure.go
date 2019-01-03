@@ -446,7 +446,6 @@ func (s *OAuthSession) expireAuthCookie(w http.ResponseWriter, r *http.Request) 
 }
 
 func newCookieStore(conf *CookieConfig) *sessions.CookieStore {
-
 	var signingKey, encryptionKey []byte
 	var err error
 
