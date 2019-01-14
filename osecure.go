@@ -2,18 +2,19 @@
 package osecure
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/gob"
 	"encoding/hex"
 	"errors"
-	"github.com/gorilla/securecookie"
-	"github.com/gorilla/sessions"
 	"golang.org/x/oauth2"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
-	"strings"
+	"github.com/gorilla/securecookie"
+	"github.com/gorilla/sessions"
 )
 
 var (
@@ -27,6 +28,12 @@ var (
 var (
 	SessionExpireTime    = 86400
 	PermissionExpireTime = 600
+)
+
+type contextKey int
+
+const (
+	contextKeySessionData = contextKey(1)
 )
 
 type set map[string]struct{}
@@ -156,12 +163,13 @@ func (s *OAuthSession) SecuredH(h http.Handler) http.Handler {
 // SecuredF is a http middleware for http.HandlerFunc to check if the current user has logged in.
 func (s *OAuthSession) SecuredF(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		_, err := s.Authorize(w, r)
+		sessionData, err := s.Authorize(w, r)
 		if err != nil {
 			s.StartOAuth(w, r)
-			return
+		} else {
+			requestInner := AttachRequestWithSessionData(r, sessionData)
+			h(w, requestInner)
 		}
-		h(w, r)
 	}
 }
 
@@ -171,6 +179,18 @@ func (s *OAuthSession) ExpireSession(redirect string) http.HandlerFunc {
 		s.expireAuthCookie(w, r)
 		http.Redirect(w, r, redirect, 303)
 	}
+}
+
+// AttachRequestWithSessionData append session data into request context
+func AttachRequestWithSessionData(r *http.Request, sessionData *AuthSessionData) *http.Request {
+	contextWithSessionData := context.WithValue(r.Context(), contextKeySessionData, sessionData)
+	return r.WithContext(contextWithSessionData)
+}
+
+// GetRequestSessionData get session data from request context
+func GetRequestSessionData(r *http.Request) (*AuthSessionData, bool) {
+	sessionData, ok := r.Context().Value(contextKeySessionData).(*AuthSessionData)
+	return sessionData, ok
 }
 
 // HasPermission checks if the current user has such permission.
@@ -209,7 +229,7 @@ func (s *OAuthSession) Authorize(w http.ResponseWriter, r *http.Request) (*AuthS
 		return nil, ErrorInvalidSession
 	}
 
-	isPermissionUpdated, err := s.ensurePermUpdated(w, r, data)
+	isPermissionUpdated, err := s.ensurePermUpdated(data)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +244,7 @@ func (s *OAuthSession) Authorize(w http.ResponseWriter, r *http.Request) (*AuthS
 	return data, nil
 }
 
-func (s *OAuthSession) ensurePermUpdated(w http.ResponseWriter, r *http.Request, data *AuthSessionData) (bool, error) {
+func (s *OAuthSession) ensurePermUpdated(data *AuthSessionData) (bool, error) {
 	if !data.isPermissionsExpired() {
 		return false, nil
 	}
@@ -266,9 +286,18 @@ func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*AuthSess
 		return nil, false, err
 	}
 
+	// restore token extra data whenever token is new or retrieved from cookie
+	var token *oauth2.Token
 	if isTokenFromAuthorizationHeader {
-		token := makeBearerToken(accessToken, expireAt).WithExtra(extra)
+		token = makeBearerToken(accessToken, expireAt)
+	} else {
+		token = cookieData.Token
+	}
+	token = token.WithExtra(extra)
+	if isTokenFromAuthorizationHeader {
 		cookieData = newAuthSessionCookieData(token)
+	} else {
+		cookieData.Token = token
 	}
 
 	data := &AuthSessionData{
@@ -440,7 +469,6 @@ func (s *OAuthSession) expireAuthCookie(w http.ResponseWriter, r *http.Request) 
 }
 
 func newCookieStore(conf *CookieConfig) *sessions.CookieStore {
-
 	var signingKey, encryptionKey []byte
 	var err error
 

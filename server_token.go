@@ -42,6 +42,7 @@ func (s *OAuthSession) GetServerToken(targetClientId string) (*ServerTokenReply,
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode == 403 {
 		return nil, ErrorPermissionDenied
