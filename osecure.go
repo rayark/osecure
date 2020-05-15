@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/gob"
-	"encoding/hex"
 	"errors"
 	"golang.org/x/oauth2"
 	"net/http"
@@ -98,26 +97,20 @@ type CookieConfig struct {
 
 // OAuthConfig is a config of osecure.
 type OAuthConfig struct {
-	ClientID                 string   `yaml:"client_id" env:"client_id"`
-	ClientSecret             string   `yaml:"client_secret" env:"client_secret"`
-	Scopes                   []string `yaml:"scopes" env:"scopes"`
-	AuthURL                  string   `yaml:"auth_url" env:"auth_url"`
-	TokenURL                 string   `yaml:"token_url" env:"token_url"`
-	AppIDList                []string `yaml:"app_id_list" env:"app_id_list"`
-	InterServerClientID      string   `yaml:"inter_server_client_id" env:"inter_server_client_id"`
-	ServerTokenURL           string   `yaml:"server_token_url" env:"server_token_url"`
-	ServerTokenEncryptionKey string   `yaml:"server_token_encryption_key" env:"server_token_encryption_key"`
+	ClientID     string   `yaml:"client_id" env:"client_id"`
+	ClientSecret string   `yaml:"client_secret" env:"client_secret"`
+	Scopes       []string `yaml:"scopes" env:"scopes"`
+	AuthURL      string   `yaml:"auth_url" env:"auth_url"`
+	TokenURL     string   `yaml:"token_url" env:"token_url"`
+	AppIDList    []string `yaml:"app_id_list" env:"app_id_list"`
 }
 
 type OAuthSession struct {
-	name                     string
-	cookieStore              *sessions.CookieStore
-	client                   *oauth2.Config
-	appIDSet                 set
-	tokenVerifier            *TokenVerifier
-	interServerClientID      string
-	serverTokenURL           string
-	serverTokenEncryptionKey []byte
+	name          string
+	cookieStore   *sessions.CookieStore
+	client        *oauth2.Config
+	appIDSet      set
+	tokenVerifier *TokenVerifier
 }
 
 // NewOAuthSession creates osecure session.
@@ -138,20 +131,12 @@ func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConf
 		appIDSet.add(appID)
 	}
 
-	serverTokenEncryptionKey, err := hex.DecodeString(oauthConf.ServerTokenEncryptionKey)
-	if err != nil {
-		panic(err)
-	}
-
 	return &OAuthSession{
-		name:                     name,
-		cookieStore:              newCookieStore(cookieConf),
-		client:                   client,
-		appIDSet:                 appIDSet,
-		tokenVerifier:            tokenVerifier,
-		interServerClientID:      oauthConf.InterServerClientID,
-		serverTokenURL:           oauthConf.ServerTokenURL,
-		serverTokenEncryptionKey: serverTokenEncryptionKey,
+		name:          name,
+		cookieStore:   newCookieStore(cookieConf),
+		client:        client,
+		appIDSet:      appIDSet,
+		tokenVerifier: tokenVerifier,
 	}
 }
 
