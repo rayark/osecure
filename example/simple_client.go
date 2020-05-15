@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 	"github.com/julienschmidt/httprouter"
-	"github.com/rayark/osecure"
-	osecure_contrib "github.com/rayark/osecure/contrib"
-	"github.com/rayark/osecure/inter_server"
+	"github.com/rayark/osecure/v3"
+	osecure_contrib "github.com/rayark/osecure/v3/contrib"
+	"github.com/rayark/osecure/v3/inter_server"
 	"github.com/rayark/zin"
 	"github.com/rayark/zin/middleware"
 	"log"
