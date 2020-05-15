@@ -1,4 +1,4 @@
-package osecure
+package inter_server
 
 import (
 	"crypto/aes"

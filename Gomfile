@@ -1,4 +1,0 @@
-
-gom 'github.com/gorilla/sessions'
-gom 'github.com/zenazn/goji/web'
-gom 'golang.org/x/oauth2'
