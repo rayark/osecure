@@ -150,7 +150,8 @@ func (s *OAuthSession) SecuredF(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionData, err := s.Authorize(w, r)
 		if err != nil {
-			s.StartOAuth(w, r)
+			state := r.RequestURI
+			s.StartOAuth(w, r, state)
 		} else {
 			requestInner := AttachRequestWithSessionData(r, sessionData)
 			h(w, requestInner)
@@ -351,8 +352,33 @@ func (s *OAuthSession) isValidClientID(clientID string) bool {
 }
 
 // StartOAuth redirect to endpoint of OAuth service provider for OAuth flow.
-func (s *OAuthSession) StartOAuth(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, s.client.AuthCodeURL(r.RequestURI), 303)
+func (s *OAuthSession) StartOAuth(w http.ResponseWriter, r *http.Request, state string) {
+	http.Redirect(w, r, s.client.AuthCodeURL(state), 303)
+}
+
+func (s *OAuthSession) EndOAuth(w http.ResponseWriter, r *http.Request, code string) (isAuthorized bool, err error) {
+	var token *oauth2.Token
+	token, err = s.client.Exchange(oauth2.NoContext, code)
+	if err != nil {
+		return
+	}
+
+	// OAuth flow is already completed, error after that should not relate to OAuth flow
+	isAuthorized = true
+
+	// TODO: how to get subject (account ID) when using exchange code only?
+	/*userID, clientID, _, _, err := s.tokenVerifier.IntrospectTokenFunc(token.AccessToken)
+	if err != nil {
+		return
+	}*/
+
+	//err = s.issueAuthCookie(w, r, newAuthSessionCookieData(userID, clientID, token))
+	err = s.issueAuthCookie(w, r, newAuthSessionCookieData(token))
+	if err != nil {
+		return
+	}
+
+	return
 }
 
 // CallbackView is a http handler for the authentication redirection of the
@@ -362,23 +388,15 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 	code := q.Get("code")
 	cont := q.Get("state")
 
-	token, err := s.client.Exchange(oauth2.NoContext, code)
+	isAuthorized, err := s.EndOAuth(w, r, code)
 	if err != nil {
-		http.Error(w, err.Error(), 400)
-		return
-	}
-
-	// TODO: how to get subject (account ID) when using exchange code only?
-	/*userID, clientID, _, _, err := s.tokenVerifier.IntrospectTokenFunc(token.AccessToken)
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}*/
-
-	//err = s.issueAuthCookie(w, r, newAuthSessionCookieData(userID, clientID, token))
-	err = s.issueAuthCookie(w, r, newAuthSessionCookieData(token))
-	if err != nil {
-		http.Error(w, err.Error(), 500)
+		var statusCode int
+		if isAuthorized {
+			statusCode = 500
+		} else {
+			statusCode = 400
+		}
+		http.Error(w, err.Error(), statusCode)
 		return
 	}
 
