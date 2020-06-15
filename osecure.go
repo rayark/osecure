@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/gob"
 	"errors"
+	"fmt"
 	"golang.org/x/oauth2"
 	"net/http"
 	"sort"
@@ -23,6 +24,19 @@ var (
 	ErrorInvalidClientID                  = errors.New("invalid client ID (audience of token)")
 	ErrorInvalidUserID                    = errors.New("invalid user ID (subject of token)")
 )
+
+const (
+	ErrorStringFailedToExchangeAuthorizationCode = "failed to exchange authorization code"
+	ErrorStringUnableToSetCookie                 = "unable to set cookie"
+)
+
+func WrapError(msg string, err error) error {
+	return fmt.Errorf("%s: %w", msg, err)
+}
+
+func CompareErrorMessage(err error, msg string) bool {
+	return strings.HasPrefix(err.Error(), msg+":")
+}
 
 var (
 	SessionExpireTime    = 86400
@@ -356,29 +370,27 @@ func (s *OAuthSession) StartOAuth(w http.ResponseWriter, r *http.Request, state 
 	http.Redirect(w, r, s.client.AuthCodeURL(state), 303)
 }
 
-func (s *OAuthSession) EndOAuth(w http.ResponseWriter, r *http.Request, code string) (isAuthorized bool, err error) {
-	var token *oauth2.Token
-	token, err = s.client.Exchange(oauth2.NoContext, code)
+func (s *OAuthSession) EndOAuth(w http.ResponseWriter, r *http.Request, code string) error {
+	token, err := s.client.Exchange(oauth2.NoContext, code)
 	if err != nil {
-		return
+		return WrapError(ErrorStringFailedToExchangeAuthorizationCode, err)
 	}
 
 	// OAuth flow is already completed, error after that should not relate to OAuth flow
-	isAuthorized = true
 
 	// TODO: how to get subject (account ID) when using exchange code only?
 	/*userID, clientID, _, _, err := s.tokenVerifier.IntrospectTokenFunc(token.AccessToken)
 	if err != nil {
-		return
+		return err
 	}*/
 
 	//err = s.issueAuthCookie(w, r, newAuthSessionCookieData(userID, clientID, token))
 	err = s.issueAuthCookie(w, r, newAuthSessionCookieData(token))
 	if err != nil {
-		return
+		return WrapError(ErrorStringUnableToSetCookie, err)
 	}
 
-	return
+	return nil
 }
 
 // CallbackView is a http handler for the authentication redirection of the
@@ -388,13 +400,13 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 	code := q.Get("code")
 	cont := q.Get("state")
 
-	isAuthorized, err := s.EndOAuth(w, r, code)
+	err := s.EndOAuth(w, r, code)
 	if err != nil {
 		var statusCode int
-		if isAuthorized {
-			statusCode = 500
-		} else {
+		if CompareErrorMessage(err, ErrorStringFailedToExchangeAuthorizationCode) {
 			statusCode = 400
+		} else {
+			statusCode = 500
 		}
 		http.Error(w, err.Error(), statusCode)
 		return
