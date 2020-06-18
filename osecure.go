@@ -23,6 +23,7 @@ var (
 	ErrorUnsupportedAuthorizationType     = errors.New("unsupported authorization type")
 	ErrorInvalidClientID                  = errors.New("invalid client ID (audience of token)")
 	ErrorInvalidUserID                    = errors.New("invalid user ID (subject of token)")
+	ErrorInvalidState                     = errors.New("invalid state")
 )
 
 const (
@@ -125,10 +126,11 @@ type OAuthSession struct {
 	client        *oauth2.Config
 	appIDSet      set
 	tokenVerifier *TokenVerifier
+	stateHandler  *StateHandler
 }
 
 // NewOAuthSession creates osecure session.
-func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConfig, tokenVerifier *TokenVerifier, callbackURL string) *OAuthSession {
+func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConfig, tokenVerifier *TokenVerifier, callbackURL string, stateHandler *StateHandler) *OAuthSession {
 	client := &oauth2.Config{
 		ClientID:     oauthConf.ClientID,
 		ClientSecret: oauthConf.ClientSecret,
@@ -151,6 +153,7 @@ func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConf
 		client:        client,
 		appIDSet:      appIDSet,
 		tokenVerifier: tokenVerifier,
+		stateHandler:  stateHandler,
 	}
 }
 
@@ -164,7 +167,7 @@ func (s *OAuthSession) SecuredF(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionData, err := s.Authorize(w, r)
 		if err != nil {
-			state := r.RequestURI
+			state := s.stateHandler.StateGenerator(r)
 			s.StartOAuth(w, r, state)
 		} else {
 			requestInner := AttachRequestWithSessionData(r, sessionData)
@@ -398,7 +401,13 @@ func (s *OAuthSession) EndOAuth(w http.ResponseWriter, r *http.Request, code str
 func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	code := q.Get("code")
-	cont := q.Get("state")
+	state := q.Get("state")
+
+	ok, continueURI := s.stateHandler.StateVerifier(r, state)
+	if !ok {
+		err := ErrorInvalidState
+		http.Error(w, err.Error(), 400)
+	}
 
 	err := s.EndOAuth(w, r, code)
 	if err != nil {
@@ -412,7 +421,7 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, cont, 303)
+	http.Redirect(w, r, continueURI, 303)
 }
 
 func makeToken(tokenType string, accessToken string, expireAt int64) *oauth2.Token {

@@ -76,6 +76,10 @@ func main() {
 			},
 			&osecure.TokenVerifier{IntrospectTokenFunc: osecure_contrib.GoogleIntrospection(), GetPermissionsFunc: osecure_contrib.CommonPermissionRoles([]string{"user", "cat"})},
 			"http://localhost:8080/auth",
+			&osecure.StateHandler{
+				StateGenerator: osecure.DefaultStateGenerator,
+				StateVerifier:  osecure.DefaultStateVerifier,
+			},
 		),
 		interServer: inter_server.NewInterServer(
 			&inter_server.InterServerConfig{
