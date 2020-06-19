@@ -10,10 +10,10 @@ type StateHandler struct {
 	StateVerifier  StateVerifier
 }
 
-type StateGenerator func(r *http.Request) (state string)
+type StateGenerator func(w http.ResponseWriter, r *http.Request) (state string)
 type StateVerifier func(r *http.Request, state string) (ok bool, continueURI string)
 
-func DefaultStateGenerator(r *http.Request) string {
+func DefaultStateGenerator(w http.ResponseWriter, r *http.Request) string {
 	return r.RequestURI
 }
 

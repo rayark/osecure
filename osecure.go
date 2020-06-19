@@ -167,8 +167,7 @@ func (s *OAuthSession) SecuredF(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sessionData, err := s.Authorize(w, r)
 		if err != nil {
-			state := s.stateHandler.StateGenerator(r)
-			s.StartOAuth(w, r, state)
+			s.StartOAuth(w, r)
 		} else {
 			requestInner := AttachRequestWithSessionData(r, sessionData)
 			h(w, requestInner)
@@ -369,14 +368,23 @@ func (s *OAuthSession) isValidClientID(clientID string) bool {
 }
 
 // StartOAuth redirect to endpoint of OAuth service provider for OAuth flow.
-func (s *OAuthSession) StartOAuth(w http.ResponseWriter, r *http.Request, state string) {
+func (s *OAuthSession) StartOAuth(w http.ResponseWriter, r *http.Request) {
+	state := s.stateHandler.StateGenerator(w, r)
 	http.Redirect(w, r, s.client.AuthCodeURL(state), 303)
 }
 
-func (s *OAuthSession) EndOAuth(w http.ResponseWriter, r *http.Request, code string) error {
+func (s *OAuthSession) EndOAuth(w http.ResponseWriter, r *http.Request) (string, error) {
+	code := r.FormValue("code")
+	state := r.FormValue("state")
+
+	ok, continueURI := s.stateHandler.StateVerifier(r, state)
+	if !ok {
+		return "", ErrorInvalidState
+	}
+
 	token, err := s.client.Exchange(oauth2.NoContext, code)
 	if err != nil {
-		return WrapError(ErrorStringFailedToExchangeAuthorizationCode, err)
+		return "", WrapError(ErrorStringFailedToExchangeAuthorizationCode, err)
 	}
 
 	// OAuth flow is already completed, error after that should not relate to OAuth flow
@@ -384,37 +392,30 @@ func (s *OAuthSession) EndOAuth(w http.ResponseWriter, r *http.Request, code str
 	// TODO: how to get subject (account ID) when using exchange code only?
 	/*userID, clientID, _, _, err := s.tokenVerifier.IntrospectTokenFunc(token.AccessToken)
 	if err != nil {
-		return err
+		return "", err
 	}*/
 
 	//err = s.issueAuthCookie(w, r, newAuthSessionCookieData(userID, clientID, token))
 	err = s.issueAuthCookie(w, r, newAuthSessionCookieData(token))
 	if err != nil {
-		return WrapError(ErrorStringUnableToSetCookie, err)
+		return "", WrapError(ErrorStringUnableToSetCookie, err)
 	}
 
-	return nil
+	return continueURI, nil
 }
 
 // CallbackView is a http handler for the authentication redirection of the
 // auth server.
 func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	code := q.Get("code")
-	state := q.Get("state")
-
-	ok, continueURI := s.stateHandler.StateVerifier(r, state)
-	if !ok {
-		err := ErrorInvalidState
-		http.Error(w, err.Error(), 400)
-	}
-
-	err := s.EndOAuth(w, r, code)
+	continueURI, err := s.EndOAuth(w, r)
 	if err != nil {
 		var statusCode int
-		if CompareErrorMessage(err, ErrorStringFailedToExchangeAuthorizationCode) {
+		switch {
+		case err == ErrorInvalidState:
+			fallthrough
+		case CompareErrorMessage(err, ErrorStringFailedToExchangeAuthorizationCode):
 			statusCode = 400
-		} else {
+		default:
 			statusCode = 500
 		}
 		http.Error(w, err.Error(), statusCode)
