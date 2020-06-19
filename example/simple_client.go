@@ -94,8 +94,8 @@ func main() {
 
 	def := zin.NewGroup("/", middleware.Logger)
 	def.R(router.GET, "", app.Index)
-	def.R(router.GET, "login", zin.WrapS(app.osecure.SecuredH)(app.LoggedIn))
-	def.R(router.GET, "meowmeow", zin.WrapS(app.osecure.SecuredH)(app.Meowmeow))
+	def.R(router.GET, "login", zin.WrapS(app.osecure.SecuredH(false))(app.LoggedIn))
+	def.R(router.GET, "meowmeow", zin.WrapS(app.osecure.SecuredH(true))(app.Meowmeow))
 	def.R(router.GET, "logout", zin.WrapH(app.osecure.ExpireSession("/")))
 	def.R(router.GET, "get_server_token", app.GetServerToken)
 	def.R(router.GET, "auth", zin.WrapF(app.osecure.CallbackView))

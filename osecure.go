@@ -18,12 +18,12 @@ import (
 )
 
 var (
-	ErrorInvalidSession                   = errors.New("invalid session")
-	ErrorInvalidAuthorizationHeaderFormat = errors.New("invalid authorization header format")
-	ErrorUnsupportedAuthorizationType     = errors.New("unsupported authorization type")
-	ErrorInvalidClientID                  = errors.New("invalid client ID (audience of token)")
+	ErrorInvalidSession                   = errors.New("invalid session")                       // Authorize()
+	ErrorInvalidAuthorizationHeaderFormat = errors.New("invalid authorization header format")   // Authorize()
+	ErrorUnsupportedAuthorizationType     = errors.New("unsupported authorization type")        // Authorize()
+	ErrorInvalidClientID                  = errors.New("invalid client ID (audience of token)") // Authorize()
 	ErrorInvalidUserID                    = errors.New("invalid user ID (subject of token)")
-	ErrorInvalidState                     = errors.New("invalid state")
+	ErrorInvalidState                     = errors.New("invalid state") // EndOAuth()
 )
 
 const (
@@ -158,19 +158,38 @@ func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConf
 }
 
 // SecuredH is a http middleware for http.Handler to check if the current user has logged in.
-func (s *OAuthSession) SecuredH(h http.Handler) http.Handler {
-	return s.SecuredF(h.ServeHTTP)
+func (s *OAuthSession) SecuredH(isAPI bool) func(http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		return http.Handler(s.SecuredF(isAPI)(h.ServeHTTP))
+	}
 }
 
 // SecuredF is a http middleware for http.HandlerFunc to check if the current user has logged in.
-func (s *OAuthSession) SecuredF(h http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		sessionData, err := s.Authorize(w, r)
-		if err != nil {
-			s.StartOAuth(w, r)
-		} else {
-			requestInner := AttachRequestWithSessionData(r, sessionData)
-			h(w, requestInner)
+func (s *OAuthSession) SecuredF(isAPI bool) func(http.HandlerFunc) http.HandlerFunc {
+	return func(h http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			sessionData, err := s.Authorize(w, r)
+			if err != nil {
+				switch err {
+				case ErrorInvalidSession:
+					fallthrough
+				case ErrorInvalidAuthorizationHeaderFormat:
+					fallthrough
+				case ErrorUnsupportedAuthorizationType:
+					fallthrough
+				case ErrorInvalidClientID:
+					if isAPI {
+						http.Error(w, err.Error(), 401)
+					} else {
+						s.StartOAuth(w, r)
+					}
+				default:
+					http.Error(w, err.Error(), 500)
+				}
+			} else {
+				requestInner := AttachRequestWithSessionData(r, sessionData)
+				h(w, requestInner)
+			}
 		}
 	}
 }
@@ -419,10 +438,9 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 			statusCode = 500
 		}
 		http.Error(w, err.Error(), statusCode)
-		return
+	} else {
+		http.Redirect(w, r, continueURI, 303)
 	}
-
-	http.Redirect(w, r, continueURI, 303)
 }
 
 func makeToken(tokenType string, accessToken string, expireAt int64) *oauth2.Token {
