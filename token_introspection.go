@@ -12,5 +12,5 @@ type TokenVerifier struct {
 	GetPermissionsFunc  GetPermissionsFunc
 }
 
-type IntrospectTokenFunc func(ctx context.Context, accessToken string) (userID string, clientID string, expireAt int64, extra map[string]interface{}, err error)
+type IntrospectTokenFunc func(ctx context.Context, accessToken string) (userID string, clientID string, expiresAt int64, extra map[string]interface{}, err error)
 type GetPermissionsFunc func(ctx context.Context, userID string, clientID string, token *oauth2.Token) (permissions []string, err error)

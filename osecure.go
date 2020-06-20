@@ -77,9 +77,9 @@ type AuthSessionData struct {
 type AuthSessionCookieData struct {
 	//UserID              string
 	//ClientID            string
-	Token               *oauth2.Token
-	Permissions         []string
-	PermissionsExpireAt time.Time
+	Token                *oauth2.Token
+	Permissions          []string
+	PermissionsExpiresAt time.Time
 }
 
 //func newAuthSessionCookieData(userID string, clientID string, token *oauth2.Token) *AuthSessionCookieData {
@@ -90,9 +90,9 @@ func newAuthSessionCookieData(token *oauth2.Token) *AuthSessionCookieData {
 	return &AuthSessionCookieData{
 		//UserID:              userID,
 		//ClientID:            clientID,
-		Token:               token,
-		Permissions:         []string{},
-		PermissionsExpireAt: time.Time{}, // Zero time
+		Token:                token,
+		Permissions:          []string{},
+		PermissionsExpiresAt: time.Time{}, // Zero time
 	}
 }
 
@@ -101,7 +101,7 @@ func (cookieData *AuthSessionCookieData) isTokenExpired() bool {
 }
 
 func (cookieData *AuthSessionCookieData) isPermissionsExpired() bool {
-	return cookieData.PermissionsExpireAt.Before(time.Now())
+	return cookieData.PermissionsExpiresAt.Before(time.Now())
 }
 
 // CookieConfig is a config of github.com/gorilla/securecookie. Recommended
@@ -284,7 +284,7 @@ func (s *OAuthSession) ensurePermUpdated(ctx context.Context, data *AuthSessionD
 	}
 
 	data.Permissions = permissions
-	data.PermissionsExpireAt = time.Now().Add(time.Duration(PermissionExpireTime) * time.Second)
+	data.PermissionsExpiresAt = time.Now().Add(time.Duration(PermissionExpireTime) * time.Second)
 
 	// Sort the string, as sort.SearchStrings needs sorted []string.
 	sort.Strings(data.Permissions)
@@ -310,7 +310,7 @@ func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*AuthSess
 		isTokenFromAuthorizationHeader = false
 	}
 
-	userID, clientID, expireAt, extra, err := s.tokenVerifier.IntrospectTokenFunc(r.Context(), accessToken)
+	userID, clientID, expiresAt, extra, err := s.tokenVerifier.IntrospectTokenFunc(r.Context(), accessToken)
 	if err != nil {
 		return nil, false, WrapError(ErrorStringCannotIntrospectToken, err)
 	}
@@ -318,7 +318,7 @@ func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*AuthSess
 	// restore token extra data whenever token is new or retrieved from cookie
 	var token *oauth2.Token
 	if isTokenFromAuthorizationHeader {
-		token = makeBearerToken(accessToken, expireAt)
+		token = makeBearerToken(accessToken, expiresAt)
 	} else {
 		token = cookieData.Token
 	}
@@ -378,15 +378,15 @@ func (s *OAuthSession) getAndIntrospectBearerToken(r *http.Request) (userID stri
 		return
 	}
 
-	var expireAt int64
+	var expiresAt int64
 	var extra map[string]interface{}
-	userID, clientID, expireAt, extra, err = s.tokenVerifier.IntrospectTokenFunc(r.Context(), bearerToken)
+	userID, clientID, expiresAt, extra, err = s.tokenVerifier.IntrospectTokenFunc(r.Context(), bearerToken)
 	if err != nil {
 		err = WrapError(ErrorStringCannotIntrospectToken, err)
 		return
 	}
 
-	token = makeBearerToken(bearerToken, expireAt).WithExtra(extra)
+	token = makeBearerToken(bearerToken, expiresAt).WithExtra(extra)
 	return
 }
 */
@@ -452,16 +452,16 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func makeToken(tokenType string, accessToken string, expireAt int64) *oauth2.Token {
+func makeToken(tokenType string, accessToken string, expiresAt int64) *oauth2.Token {
 	return &oauth2.Token{
 		AccessToken: accessToken,
 		TokenType:   tokenType,
-		Expiry:      time.Unix(expireAt, 0),
+		Expiry:      time.Unix(expiresAt, 0),
 	}
 }
 
-func makeBearerToken(accessToken string, expireAt int64) *oauth2.Token {
-	return makeToken("Bearer", accessToken, expireAt)
+func makeBearerToken(accessToken string, expiresAt int64) *oauth2.Token {
+	return makeToken("Bearer", accessToken, expiresAt)
 }
 
 func (s *OAuthSession) getBearerToken(r *http.Request) (string, error) {

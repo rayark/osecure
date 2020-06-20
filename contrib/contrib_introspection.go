@@ -24,7 +24,7 @@ const (
 // predefined token introspection func
 
 func GoogleIntrospection() osecure.IntrospectTokenFunc {
-	return func(ctx context.Context, accessToken string) (userID string, clientID string, expireAt int64, extra map[string]interface{}, err error) {
+	return func(ctx context.Context, accessToken string) (userID string, clientID string, expiresAt int64, extra map[string]interface{}, err error) {
 		req, err := http.NewRequest(http.MethodGet, TokenEndpointURL, nil)
 		if err != nil {
 			return
@@ -60,8 +60,8 @@ func GoogleIntrospection() osecure.IntrospectTokenFunc {
 			Subject         string `json:"sub"`
 			Audience        string `json:"aud"`
 			AuthorizedParty string `json:"azp"`
-			ExpireAt        int64  `json:"exp,string"`
-			ExpireIn        int64  `json:"expires_in,string"`
+			ExpiresAt       int64  `json:"exp,string"`
+			ExpiresIn       int64  `json:"expires_in,string"`
 			EMail           string `json:"email"`
 			IsEMailVerified bool   `json:"email_verified,string"`
 			AccessType      string `json:"access_type"`
@@ -79,18 +79,19 @@ func GoogleIntrospection() osecure.IntrospectTokenFunc {
 		}
 		extraData["aliases"] = aliases
 		extraData["azp"] = result.AuthorizedParty
+		extraData["expires_in"] = result.ExpiresIn
 		extraData["access_type"] = result.AccessType
 
 		userID = result.Subject
 		clientID = result.Audience
-		expireAt = result.ExpireAt
+		expiresAt = result.ExpiresAt
 		extra = extraData
 		return
 	}
 }
 
 func SentryIntrospection(tokenInfoURL string) osecure.IntrospectTokenFunc {
-	return func(ctx context.Context, accessToken string) (userID string, clientID string, expireAt int64, extra map[string]interface{}, err error) {
+	return func(ctx context.Context, accessToken string) (userID string, clientID string, expiresAt int64, extra map[string]interface{}, err error) {
 		req, err := http.NewRequest(http.MethodPost, tokenInfoURL, nil)
 		if err != nil {
 			return
@@ -134,10 +135,11 @@ func SentryIntrospection(tokenInfoURL string) osecure.IntrospectTokenFunc {
 
 		extraData := make(map[string]interface{})
 		extraData["user_id"] = result.UserID
+		extraData["expires_in"] = result.ExpiresIn
 
 		userID = result.Username
 		clientID = result.ClientID
-		expireAt = time.Now().Unix() + result.ExpiresIn
+		expiresAt = time.Now().Unix() + result.ExpiresIn
 		extra = extraData
 		return
 	}
