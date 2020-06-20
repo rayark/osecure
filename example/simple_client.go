@@ -12,28 +12,55 @@ import (
 	"net/http"
 )
 
+const (
+	indexPage = `
+<!DOCTYPE html>
+<html>
+<head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8" /></head>
+<body>
+    <ul>
+        <li><a href="/login">login</a></li>
+        <li><a href="/meowmeow">meowmeow</a></li>
+        <li><a href="/logout">logout</a></li>
+        <li><a href="/get_server_token">get_server_token</a></li>
+    </ul>
+</body>
+</html>
+`
+)
+
 type App struct {
 	osecure     *osecure.OAuthSession
 	interServer *inter_server.InterServer
 }
 
 func (app *App) Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	fmt.Fprint(w, "Index\n")
+	w.Header().Set("Content-Type", "text/html; charset=UTF-8")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, indexPage)
 }
 
 func (app *App) LoggedIn(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	w.Header().Set("Content-Type", "text/plain; charset=UTF-8")
+	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "Logged in\n")
 }
 
 func (app *App) LogOut(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	w.Header().Set("Content-Type", "text/plain; charset=UTF-8")
+	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "Logged out\n")
 }
 
 func (app *App) Meowmeow(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	w.Header().Set("Content-Type", "text/plain; charset=UTF-8")
+
 	sessionData, ok := osecure.GetRequestSessionData(r)
 	if ok && sessionData.HasPermission("cat") {
+		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "Meowmeow =OwO=\n")
 	} else {
+		w.WriteHeader(http.StatusForbidden)
 		fmt.Fprint(w, "No meow for you\n")
 	}
 }
@@ -56,6 +83,9 @@ func (app *App) GetServerToken(w http.ResponseWriter, r *http.Request, _ httprou
 	if err != nil {
 		panic(err)
 	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=UTF-8")
+	w.WriteHeader(http.StatusOK)
 	fmt.Fprintln(w, token)
 }
 
