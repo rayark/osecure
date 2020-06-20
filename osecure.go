@@ -208,13 +208,13 @@ func (s *OAuthSession) ExpireSession(redirect string) http.HandlerFunc {
 	}
 }
 
-// AttachRequestWithSessionData append session data into request context
+// AttachRequestWithSessionData append session data into request context.
 func AttachRequestWithSessionData(r *http.Request, sessionData *AuthSessionData) *http.Request {
 	contextWithSessionData := context.WithValue(r.Context(), contextKeySessionData, sessionData)
 	return r.WithContext(contextWithSessionData)
 }
 
-// GetRequestSessionData get session data from request context
+// GetRequestSessionData get session data from request context.
 func GetRequestSessionData(r *http.Request) (*AuthSessionData, bool) {
 	sessionData, ok := r.Context().Value(contextKeySessionData).(*AuthSessionData)
 	return sessionData, ok
@@ -246,7 +246,7 @@ func (data *AuthSessionData) GetClientID() string {
 }
 
 // Authorize authorize user by verifying cookie or bearer token.
-// if user is authorized, return session data. else, return error.
+// if user is authorized, return valid session data. else, return error.
 func (s *OAuthSession) Authorize(w http.ResponseWriter, r *http.Request) (*AuthSessionData, error) {
 	data, isTokenFromAuthorizationHeader, err := s.getAuthSessionDataFromRequest(r)
 	if err != nil {
@@ -401,6 +401,8 @@ func (s *OAuthSession) StartOAuth(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, s.client.AuthCodeURL(state), 303)
 }
 
+// EndOAuth finish OAuth flow.
+// it will verify state, exchange from authorization code to token, set cookie to make user logged in.
 func (s *OAuthSession) EndOAuth(w http.ResponseWriter, r *http.Request) (string, error) {
 	code := r.FormValue("code")
 	state := r.FormValue("state")
