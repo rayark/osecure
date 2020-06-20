@@ -18,17 +18,19 @@ import (
 )
 
 var (
-	ErrorInvalidSession                   = errors.New("invalid session")                       // Authorize()
-	ErrorInvalidAuthorizationHeaderFormat = errors.New("invalid authorization header format")   // Authorize()
-	ErrorUnsupportedAuthorizationType     = errors.New("unsupported authorization type")        // Authorize()
-	ErrorInvalidClientID                  = errors.New("invalid client ID (audience of token)") // Authorize()
-	ErrorInvalidUserID                    = errors.New("invalid user ID (subject of token)")    // not used
-	ErrorInvalidState                     = errors.New("invalid state")                         // EndOAuth()
+	ErrorInvalidSession                 = errors.New("invalid session")                       // Authorize()
+	ErrorInvalidAuthorizationSyntax     = errors.New("invalid authorization syntax")          // Authorize()
+	ErrorUnsupportedAuthorizationScheme = errors.New("unsupported authorization scheme")      // Authorize()
+	ErrorInvalidClientID                = errors.New("invalid client ID (audience of token)") // Authorize()
+	ErrorInvalidUserID                  = errors.New("invalid user ID (subject of token)")    // not used
+
+	ErrorInvalidState = errors.New("invalid state") // EndOAuth()
 )
 
 const (
 	ErrorStringFailedToExchangeAuthorizationCode = "failed to exchange authorization code"
 	ErrorStringUnableToSetCookie                 = "unable to set cookie"
+	ErrorStringUnauthorized                      = "unauthorized"
 	ErrorStringCannotIntrospectToken             = "cannot introspect token"
 	ErrorStringCannotGetPermission               = "cannot get permission"
 )
@@ -173,15 +175,7 @@ func (s *OAuthSession) SecuredF(isAPI bool) func(http.HandlerFunc) http.HandlerF
 			sessionData, err := s.Authorize(w, r)
 			if err != nil {
 				switch {
-				case err == ErrorInvalidSession:
-					fallthrough
-				case err == ErrorInvalidAuthorizationHeaderFormat:
-					fallthrough
-				case err == ErrorUnsupportedAuthorizationType:
-					fallthrough
-				case err == ErrorInvalidClientID:
-					fallthrough
-				case CompareErrorMessage(err, ErrorStringCannotIntrospectToken):
+				case CompareErrorMessage(err, ErrorStringUnauthorized):
 					if isAPI {
 						http.Error(w, err.Error(), 401)
 					} else {
@@ -250,10 +244,10 @@ func (data *AuthSessionData) GetClientID() string {
 func (s *OAuthSession) Authorize(w http.ResponseWriter, r *http.Request) (*AuthSessionData, error) {
 	data, isTokenFromAuthorizationHeader, err := s.getAuthSessionDataFromRequest(r)
 	if err != nil {
-		return nil, err
+		return nil, WrapError(ErrorStringUnauthorized, err)
 	}
 	if data == nil || data.isTokenExpired() {
-		return nil, ErrorInvalidSession
+		return nil, WrapError(ErrorStringUnauthorized, ErrorInvalidSession)
 	}
 
 	isPermissionUpdated, err := s.ensurePermUpdated(r.Context(), data)
@@ -471,12 +465,12 @@ func (s *OAuthSession) getBearerToken(r *http.Request) (string, error) {
 
 	authorizationData := strings.SplitN(authorizationHeaderValue, " ", 2)
 	if len(authorizationData) != 2 {
-		return "", ErrorInvalidAuthorizationHeaderFormat
+		return "", ErrorInvalidAuthorizationSyntax
 	}
 
 	tokenType := authorizationData[0]
 	if !strings.EqualFold(tokenType, "bearer") {
-		return "", ErrorUnsupportedAuthorizationType
+		return "", ErrorUnsupportedAuthorizationScheme
 	}
 
 	bearerToken := authorizationData[1]
