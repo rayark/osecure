@@ -22,8 +22,8 @@ var (
 	ErrorInvalidAuthorizationHeaderFormat = errors.New("invalid authorization header format")   // Authorize()
 	ErrorUnsupportedAuthorizationType     = errors.New("unsupported authorization type")        // Authorize()
 	ErrorInvalidClientID                  = errors.New("invalid client ID (audience of token)") // Authorize()
-	ErrorInvalidUserID                    = errors.New("invalid user ID (subject of token)")
-	ErrorInvalidState                     = errors.New("invalid state") // EndOAuth()
+	ErrorInvalidUserID                    = errors.New("invalid user ID (subject of token)")    // not used
+	ErrorInvalidState                     = errors.New("invalid state")                         // EndOAuth()
 )
 
 const (
