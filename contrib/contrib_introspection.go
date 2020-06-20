@@ -159,8 +159,16 @@ func CommonPermissionRoles(roles []string) osecure.GetPermissionsFunc {
 
 // predefined permission roles (a table to represent how to grant everyone's access)
 func PredefinedPermissionRoles(userRolesMap map[string][]string) osecure.GetPermissionsFunc {
+	//prevent from mutable user roles map
+	internalUserRolesMap := make(map[string][]string)
+	for userID, roles := range userRolesMap {
+		internalRoles := make([]string, len(roles))
+		copy(internalRoles, roles)
+		internalUserRolesMap[userID] = internalRoles
+	}
+
 	return func(ctx context.Context, userID string, clientID string, token *oauth2.Token) (permissions []string, err error) {
-		roles := userRolesMap[userID]
+		roles := internalUserRolesMap[userID]
 		return roles, nil
 	}
 
