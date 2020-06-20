@@ -261,10 +261,12 @@ func (s *OAuthSession) Authorize(w http.ResponseWriter, r *http.Request) (*AuthS
 		return nil, err
 	}
 
-	if isTokenFromAuthorizationHeader || isPermissionUpdated {
+	isCookieDataModified := isTokenFromAuthorizationHeader || isPermissionUpdated
+
+	if isCookieDataModified {
 		err = s.issueAuthCookie(w, r, data.AuthSessionCookieData)
 		if err != nil {
-			return nil, err
+			return nil, WrapError(ErrorStringUnableToSetCookie, err)
 		}
 	}
 
