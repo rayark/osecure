@@ -2,6 +2,7 @@
 package contrib
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -23,11 +24,12 @@ const (
 // predefined token introspection func
 
 func GoogleIntrospection() osecure.IntrospectTokenFunc {
-	return func(accessToken string) (userID string, clientID string, expireAt int64, extra map[string]interface{}, err error) {
+	return func(ctx context.Context, accessToken string) (userID string, clientID string, expireAt int64, extra map[string]interface{}, err error) {
 		req, err := http.NewRequest(http.MethodGet, TokenEndpointURL, nil)
 		if err != nil {
 			return
 		}
+		req = req.WithContext(ctx)
 
 		query := req.URL.Query()
 		query.Add("access_token", accessToken)
@@ -88,11 +90,12 @@ func GoogleIntrospection() osecure.IntrospectTokenFunc {
 }
 
 func SentryIntrospection(tokenInfoURL string) osecure.IntrospectTokenFunc {
-	return func(accessToken string) (userID string, clientID string, expireAt int64, extra map[string]interface{}, err error) {
+	return func(ctx context.Context, accessToken string) (userID string, clientID string, expireAt int64, extra map[string]interface{}, err error) {
 		req, err := http.NewRequest(http.MethodPost, tokenInfoURL, nil)
 		if err != nil {
 			return
 		}
+		req = req.WithContext(ctx)
 
 		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", accessToken))
 
@@ -148,7 +151,7 @@ func CommonPermissionRoles(roles []string) osecure.GetPermissionsFunc {
 	internalRoles := make([]string, len(roles))
 	copy(internalRoles, roles)
 
-	return func(userID string, clientID string, token *oauth2.Token) (permissions []string, err error) {
+	return func(ctx context.Context, userID string, clientID string, token *oauth2.Token) (permissions []string, err error) {
 		return internalRoles, nil
 	}
 
@@ -156,7 +159,7 @@ func CommonPermissionRoles(roles []string) osecure.GetPermissionsFunc {
 
 // predefined permission roles (a table to represent how to grant everyone's access)
 func PredefinedPermissionRoles(userRolesMap map[string][]string) osecure.GetPermissionsFunc {
-	return func(userID string, clientID string, token *oauth2.Token) (permissions []string, err error) {
+	return func(ctx context.Context, userID string, clientID string, token *oauth2.Token) (permissions []string, err error) {
 		roles := userRolesMap[userID]
 		return roles, nil
 	}
@@ -165,8 +168,8 @@ func PredefinedPermissionRoles(userRolesMap map[string][]string) osecure.GetPerm
 
 // sentry permission
 func SentryPermission(permissionsURL string) osecure.GetPermissionsFunc {
-	return func(userID string, clientID string, token *oauth2.Token) (permissions []string, err error) {
-		client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
+	return func(ctx context.Context, userID string, clientID string, token *oauth2.Token) (permissions []string, err error) {
+		client := oauth2.NewClient(ctx, oauth2.StaticTokenSource(token))
 
 		//resp, err := client.PostForm(permissionsURL, url.Values{})
 		resp, err := client.Get(permissionsURL)
