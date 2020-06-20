@@ -3,7 +3,6 @@ package contrib
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -42,22 +41,28 @@ func GoogleIntrospection() osecure.IntrospectTokenFunc {
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			var respData []byte
-			respData, err = ioutil.ReadAll(resp.Body)
+			var errorResult struct {
+				ErrorDescription string `json:"error_description"`
+			}
+
+			err = json.NewDecoder(resp.Body).Decode(&errorResult)
 			if err != nil {
 				return
 			}
 
-			err = errors.New(fmt.Sprintf("cannot introspect token: introspection API error:\nstatus code: %d\n%s", resp.StatusCode, string(respData)))
+			err = fmt.Errorf("Google API error: status code: %d, description: %s", resp.StatusCode, errorResult.ErrorDescription)
 			return
 		}
 
 		var result struct {
 			Subject         string `json:"sub"`
 			Audience        string `json:"aud"`
+			AuthorizedParty string `json:"azp"`
 			ExpireAt        int64  `json:"exp,string"`
+			ExpireIn        int64  `json:"expires_in,string"`
 			EMail           string `json:"email"`
 			IsEMailVerified bool   `json:"email_verified,string"`
+			AccessType      string `json:"access_type"`
 		}
 
 		err = json.NewDecoder(resp.Body).Decode(&result)
@@ -71,6 +76,8 @@ func GoogleIntrospection() osecure.IntrospectTokenFunc {
 			aliases = []string{result.EMail}
 		}
 		extraData["aliases"] = aliases
+		extraData["azp"] = result.AuthorizedParty
+		extraData["access_type"] = result.AccessType
 
 		userID = result.Subject
 		clientID = result.Audience
@@ -103,7 +110,7 @@ func SentryIntrospection(tokenInfoURL string) osecure.IntrospectTokenFunc {
 				return
 			}
 
-			err = errors.New(fmt.Sprintf("cannot introspect token: introspection API error:\nstatus code: %d\n%s", resp.StatusCode, string(respData)))
+			err = fmt.Errorf("Sentry API error: status code: %d, body:\n%s", resp.StatusCode, string(respData))
 			return
 		}
 
@@ -185,7 +192,7 @@ func SentryPermission(permissionsURL string) osecure.GetPermissionsFunc {
 				return
 			}
 
-			err = errors.New(fmt.Sprintf("cannot get permission: permission API error:\nstatus code: %d\n%s", resp.StatusCode, string(respData)))
+			err = fmt.Errorf("Sentry API error: status code: %d, body:\n%s", resp.StatusCode, string(respData))
 			return
 		}
 

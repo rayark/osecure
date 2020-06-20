@@ -29,6 +29,8 @@ var (
 const (
 	ErrorStringFailedToExchangeAuthorizationCode = "failed to exchange authorization code"
 	ErrorStringUnableToSetCookie                 = "unable to set cookie"
+	ErrorStringCannotIntrospectToken             = "cannot introspect token"
+	ErrorStringCannotGetPermission               = "cannot get permission"
 )
 
 func WrapError(msg string, err error) error {
@@ -170,19 +172,23 @@ func (s *OAuthSession) SecuredF(isAPI bool) func(http.HandlerFunc) http.HandlerF
 		return func(w http.ResponseWriter, r *http.Request) {
 			sessionData, err := s.Authorize(w, r)
 			if err != nil {
-				switch err {
-				case ErrorInvalidSession:
+				switch {
+				case err == ErrorInvalidSession:
 					fallthrough
-				case ErrorInvalidAuthorizationHeaderFormat:
+				case err == ErrorInvalidAuthorizationHeaderFormat:
 					fallthrough
-				case ErrorUnsupportedAuthorizationType:
+				case err == ErrorUnsupportedAuthorizationType:
 					fallthrough
-				case ErrorInvalidClientID:
+				case err == ErrorInvalidClientID:
+					fallthrough
+				case CompareErrorMessage(err, ErrorStringCannotIntrospectToken):
 					if isAPI {
 						http.Error(w, err.Error(), 401)
 					} else {
 						s.StartOAuth(w, r)
 					}
+				case CompareErrorMessage(err, ErrorStringCannotGetPermission):
+					http.Error(w, err.Error(), 403)
 				default:
 					http.Error(w, err.Error(), 500)
 				}
@@ -272,7 +278,7 @@ func (s *OAuthSession) ensurePermUpdated(data *AuthSessionData) (bool, error) {
 
 	permissions, err := s.tokenVerifier.GetPermissionsFunc(data.UserID, data.ClientID, data.Token)
 	if err != nil {
-		return false, err
+		return false, WrapError(ErrorStringCannotGetPermission, err)
 	}
 
 	data.Permissions = permissions
@@ -304,7 +310,7 @@ func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*AuthSess
 
 	userID, clientID, expireAt, extra, err := s.tokenVerifier.IntrospectTokenFunc(accessToken)
 	if err != nil {
-		return nil, false, err
+		return nil, false, WrapError(ErrorStringCannotIntrospectToken, err)
 	}
 
 	// restore token extra data whenever token is new or retrieved from cookie
@@ -374,6 +380,7 @@ func (s *OAuthSession) getAndIntrospectBearerToken(r *http.Request) (userID stri
 	var extra map[string]interface{}
 	userID, clientID, expireAt, extra, err = s.tokenVerifier.IntrospectTokenFunc(bearerToken)
 	if err != nil {
+		err = WrapError(ErrorStringCannotIntrospectToken, err)
 		return
 	}
 
@@ -411,7 +418,7 @@ func (s *OAuthSession) EndOAuth(w http.ResponseWriter, r *http.Request) (string,
 	// TODO: how to get subject (account ID) when using exchange code only?
 	/*userID, clientID, _, _, err := s.tokenVerifier.IntrospectTokenFunc(token.AccessToken)
 	if err != nil {
-		return "", err
+		return "", WrapError(ErrorStringCannotIntrospectToken, err)
 	}*/
 
 	//err = s.issueAuthCookie(w, r, newAuthSessionCookieData(userID, clientID, token))
