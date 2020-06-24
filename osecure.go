@@ -40,7 +40,8 @@ func WrapError(msg string, err error) error {
 }
 
 func CompareErrorMessage(err error, msg string) bool {
-	return strings.HasPrefix(err.Error(), msg+":")
+	errMsg := strings.SplitN(err.Error(), ":", 2)[0]
+	return errMsg == msg
 }
 
 var (
@@ -435,7 +436,7 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var statusCode int
 		switch {
-		case err == ErrorInvalidState:
+		case CompareErrorMessage(err, ErrorInvalidState.Error()):
 			fallthrough
 		case CompareErrorMessage(err, ErrorStringFailedToExchangeAuthorizationCode):
 			statusCode = 400
