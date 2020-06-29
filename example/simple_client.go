@@ -93,8 +93,8 @@ func main() {
 	app := &App{
 		osecure: osecure.NewOAuthSession("simple_client",
 			&osecure.CookieConfig{
-				SigningKey:    "44G/44KJ44GP44KL44G+44G744KK44KT44GP44KL44KK44KT44GxIO+8iOKXj+KAsuKIgOKAte+8ieODjuKZoQ==",
-				EncryptionKey: "44GP44KL44KK44KT44Gx44CcICDlkpXlmpXpnYjms6I=",
+				AuthenticationKey: "44G/44KJ44GP44KL44G+44G744KK44KT44GP44KL44KK44KT44GxIO+8iOKXj+KAsuKIgOKAte+8ieODjuKZoQ==",
+				EncryptionKey:     "44GP44KL44KK44KT44Gx44CcICDlkpXlmpXpnYjms6I=",
 			},
 			&osecure.OAuthConfig{
 				ClientID:     "57063c36f32193000195a9f3.sentry.rayark.com",
@@ -127,7 +127,7 @@ func main() {
 	def.R(router.GET, "", app.Index)
 	def.R(router.GET, "login", zin.WrapS(app.osecure.SecuredH(false))(app.LoggedIn))
 	def.R(router.GET, "meowmeow", zin.WrapS(app.osecure.SecuredH(true))(app.Meowmeow))
-	def.R(router.GET, "logout", zin.WrapH(app.osecure.ExpireSession("/")))
+	def.R(router.GET, "logout", zin.WrapH(app.osecure.LogOut("/")))
 	def.R(router.GET, "get_server_token", app.GetServerToken)
 	def.R(router.GET, "auth", zin.WrapF(app.osecure.CallbackView))
 

@@ -107,12 +107,12 @@ func (cookieData *AuthSessionCookieData) isPermissionsExpired() bool {
 	return !cookieData.PermissionsExpiresAt.After(time.Now())
 }
 
-// CookieConfig is a config of github.com/gorilla/securecookie. Recommended
-// configurations are base64 of 64 bytes key for SigningKey, and base64 of 32
-// bytes key for EncryptionKey.
+// CookieConfig is a config of github.com/gorilla/securecookie.
+// Recommended configurations are base64 of 64 bytes key for AuthenticationKey,
+// and base64 of 32 bytes key for EncryptionKey.
 type CookieConfig struct {
-	SigningKey    string `yaml:"signing_key" env:"skey"`
-	EncryptionKey string `yaml:"encryption_key" env:"ekey"`
+	AuthenticationKey string `yaml:"authentication_key" env:"akey"`
+	EncryptionKey     string `yaml:"encryption_key" env:"ekey"`
 }
 
 // OAuthConfig is a config of osecure.
@@ -195,11 +195,24 @@ func (s *OAuthSession) SecuredF(isAPI bool) func(http.HandlerFunc) http.HandlerF
 	}
 }
 
-// ExpireSession is a http function to log out the user.
-func (s *OAuthSession) ExpireSession(redirect string) http.HandlerFunc {
+// DestroySession destroy session.
+func (s *OAuthSession) ClearSession(w http.ResponseWriter, r *http.Request) error {
+	err := s.deleteAuthCookie(w, r)
+	if err != nil {
+		err = WrapError(ErrorStringUnableToSetCookie, err)
+	}
+	return err
+}
+
+// LogOut is a http handler to log out the user.
+func (s *OAuthSession) LogOut(redirect string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		s.expireAuthCookie(w, r)
-		http.Redirect(w, r, redirect, 303)
+		err := s.ClearSession(w, r)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+		} else {
+			http.Redirect(w, r, redirect, 303)
+		}
 	}
 }
 
@@ -259,7 +272,7 @@ func (s *OAuthSession) Authorize(w http.ResponseWriter, r *http.Request) (*AuthS
 	isCookieDataModified := isTokenFromAuthorizationHeader || isPermissionUpdated
 
 	if isCookieDataModified {
-		err = s.issueAuthCookie(w, r, data.AuthSessionCookieData)
+		err = s.setAuthCookie(w, r, data.AuthSessionCookieData)
 		if err != nil {
 			return nil, WrapError(ErrorStringUnableToSetCookie, err)
 		}
@@ -420,8 +433,8 @@ func (s *OAuthSession) EndOAuth(w http.ResponseWriter, r *http.Request) (string,
 		return "", WrapError(ErrorStringCannotIntrospectToken, err)
 	}*/
 
-	//err = s.issueAuthCookie(w, r, newAuthSessionCookieData(userID, clientID, token))
-	err = s.issueAuthCookie(w, r, newAuthSessionCookieData(token))
+	//err = s.setAuthCookie(w, r, newAuthSessionCookieData(userID, clientID, token))
+	err = s.setAuthCookie(w, r, newAuthSessionCookieData(token))
 	if err != nil {
 		return "", WrapError(ErrorStringUnableToSetCookie, err)
 	}
@@ -497,7 +510,7 @@ func (s *OAuthSession) retrieveAuthCookie(r *http.Request) *AuthSessionCookieDat
 	return cookieData
 }
 
-func (s *OAuthSession) issueAuthCookie(w http.ResponseWriter, r *http.Request, cookieData *AuthSessionCookieData) error {
+func (s *OAuthSession) setAuthCookie(w http.ResponseWriter, r *http.Request, cookieData *AuthSessionCookieData) error {
 	session, err := s.cookieStore.New(r, s.name)
 	if err != nil {
 		return err
@@ -507,22 +520,24 @@ func (s *OAuthSession) issueAuthCookie(w http.ResponseWriter, r *http.Request, c
 	return err
 }
 
-func (s *OAuthSession) expireAuthCookie(w http.ResponseWriter, r *http.Request) {
+func (s *OAuthSession) deleteAuthCookie(w http.ResponseWriter, r *http.Request) error {
 	session, err := s.cookieStore.Get(r, s.name)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	delete(session.Values, "data")
 	session.Options.MaxAge = -1
-	session.Save(r, w)
+	err = session.Save(r, w)
+	return err
 }
 
 func newCookieStore(conf *CookieConfig) *sessions.CookieStore {
-	var signingKey, encryptionKey []byte
-	var err error
+	var authenticationKey, encryptionKey []byte
 
 	if conf != nil {
-		signingKey, err = base64.StdEncoding.DecodeString(conf.SigningKey)
+		var err error
+
+		authenticationKey, err = base64.StdEncoding.DecodeString(conf.AuthenticationKey)
 		if err != nil {
 			panic(err)
 		}
@@ -532,9 +547,9 @@ func newCookieStore(conf *CookieConfig) *sessions.CookieStore {
 			panic(err)
 		}
 	} else {
-		signingKey = securecookie.GenerateRandomKey(64)
+		authenticationKey = securecookie.GenerateRandomKey(64)
 		encryptionKey = securecookie.GenerateRandomKey(32)
 	}
 
-	return sessions.NewCookieStore(signingKey, encryptionKey)
+	return sessions.NewCookieStore(authenticationKey, encryptionKey)
 }
