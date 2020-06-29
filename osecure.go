@@ -100,11 +100,11 @@ func newAuthSessionCookieData(token *oauth2.Token) *AuthSessionCookieData {
 }
 
 func (cookieData *AuthSessionCookieData) isTokenExpired() bool {
-	return cookieData.Token.Expiry.Before(time.Now())
+	return !cookieData.Token.Expiry.After(time.Now())
 }
 
 func (cookieData *AuthSessionCookieData) isPermissionsExpired() bool {
-	return cookieData.PermissionsExpiresAt.Before(time.Now())
+	return !cookieData.PermissionsExpiresAt.After(time.Now())
 }
 
 // CookieConfig is a config of github.com/gorilla/securecookie. Recommended
