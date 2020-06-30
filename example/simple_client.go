@@ -6,6 +6,7 @@ import (
 	"github.com/rayark/osecure/v3"
 	osecure_contrib "github.com/rayark/osecure/v3/contrib"
 	"github.com/rayark/osecure/v3/inter_server"
+	"github.com/rayark/osecure/v3/state_handler"
 	"github.com/rayark/zin"
 	"github.com/rayark/zin/middleware"
 	"log"
@@ -107,7 +108,7 @@ func main() {
 			//&osecure.TokenVerifier{IntrospectTokenFunc: osecure_contrib.GoogleIntrospection(), GetPermissionsFunc: osecure_contrib.CommonPermissionRoles([]string{"user", "cat"})},
 			&osecure.TokenVerifier{IntrospectTokenFunc: osecure_contrib.GoogleIntrospection(), GetPermissionsFunc: osecure_contrib.PredefinedPermissionRoles(map[string][]string{"123456789012345678901": {"user", "cat"}})},
 			"http://localhost:8080/auth",
-			&osecure.DefaultStateHandler{CookieName: "simple_client_state"},
+			&state_handler.DefaultStateHandler{CookieName: "simple_client_state"},
 		),
 		interServer: inter_server.NewInterServer(
 			&inter_server.InterServerConfig{

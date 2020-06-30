@@ -1,4 +1,4 @@
-// Package osecure provides simple login service based on OAuth client.
+// Package osecure/contrib provides plugins for simple login service based on OAuth client.
 package contrib
 
 import (
