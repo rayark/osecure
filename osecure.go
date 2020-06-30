@@ -131,11 +131,11 @@ type OAuthSession struct {
 	client        *oauth2.Config
 	appIDSet      set
 	tokenVerifier *TokenVerifier
-	stateHandler  *StateHandler
+	stateHandler  StateHandler
 }
 
 // NewOAuthSession creates osecure session.
-func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConfig, tokenVerifier *TokenVerifier, callbackURL string, stateHandler *StateHandler) *OAuthSession {
+func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConfig, tokenVerifier *TokenVerifier, callbackURL string, stateHandler StateHandler) *OAuthSession {
 	client := &oauth2.Config{
 		ClientID:     oauthConf.ClientID,
 		ClientSecret: oauthConf.ClientSecret,
@@ -405,8 +405,12 @@ func (s *OAuthSession) isValidClientID(clientID string) bool {
 
 // StartOAuth redirect to endpoint of OAuth service provider for OAuth flow.
 func (s *OAuthSession) StartOAuth(w http.ResponseWriter, r *http.Request) {
-	state := s.stateHandler.StateGenerator(w, r)
-	http.Redirect(w, r, s.client.AuthCodeURL(state), 303)
+	state, err := s.stateHandler.Generator(s.cookieStore, w, r)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+	} else {
+		http.Redirect(w, r, s.client.AuthCodeURL(state), 303)
+	}
 }
 
 // EndOAuth finish OAuth flow.
@@ -415,7 +419,7 @@ func (s *OAuthSession) EndOAuth(w http.ResponseWriter, r *http.Request) (string,
 	code := r.FormValue("code")
 	state := r.FormValue("state")
 
-	ok, continueURI := s.stateHandler.StateVerifier(r, state)
+	ok, continueURI := s.stateHandler.Verifier(s.cookieStore, r, state)
 	if !ok {
 		return "", ErrorInvalidState
 	}
