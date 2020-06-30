@@ -419,7 +419,7 @@ func (s *OAuthSession) EndOAuth(w http.ResponseWriter, r *http.Request) (string,
 	code := r.FormValue("code")
 	state := r.FormValue("state")
 
-	ok, continueURI := s.stateHandler.Verifier(s.cookieStore, r, state)
+	ok, continueURI := s.stateHandler.Verifier(s.cookieStore, w, r, state)
 	if !ok {
 		return "", ErrorInvalidState
 	}

@@ -14,8 +14,10 @@ import (
 
 type StateHandler interface {
 	Generator(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request) (state string, err error)
-	Verifier(cookieStore *sessions.CookieStore, r *http.Request, state string) (ok bool, continueURI string)
+	Verifier(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request, state string) (ok bool, continueURI string)
 }
+
+// built-in state handler
 
 const (
 	nonceSize = int(16)
@@ -63,6 +65,17 @@ func (sh DefaultStateHandler) setNonceCookie(cookieStore *sessions.CookieStore, 
 	return err
 }
 
+func (sh DefaultStateHandler) deleteNonceCookie(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request) error {
+	session, err := cookieStore.Get(r, sh.CookieName)
+	if err != nil {
+		return err
+	}
+	delete(session.Values, "nonce")
+	session.Options.MaxAge = -1
+	err = session.Save(r, w)
+	return err
+}
+
 func (sh DefaultStateHandler) Generator(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request) (string, error) {
 	continueURI := r.RequestURI
 
@@ -98,12 +111,14 @@ func (sh DefaultStateHandler) Generator(cookieStore *sessions.CookieStore, w htt
 	return state, nil
 }
 
-func (sh DefaultStateHandler) Verifier(cookieStore *sessions.CookieStore, r *http.Request, state string) (bool, string) {
+func (sh DefaultStateHandler) Verifier(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request, state string) (bool, string) {
+	// retrieve nonce from cookie
 	nonce := sh.retrieveNonceCookie(cookieStore, r)
 	if len(nonce) <= 0 {
 		return false, ""
 	}
 
+	// retrieve nonce and continue_uri from state
 	stateBytes, err := base64.RawURLEncoding.DecodeString(state)
 	if err != nil {
 		return false, ""
@@ -118,7 +133,14 @@ func (sh DefaultStateHandler) Verifier(cookieStore *sessions.CookieStore, r *htt
 		return false, ""
 	}
 
+	// compare nonce from state and nonce from cookie
 	if bytes.Compare(stateData.Nonce, nonce) != 0 {
+		return false, ""
+	}
+
+	// delete nonce cookie
+	err = sh.deleteNonceCookie(cookieStore, w, r)
+	if err != nil {
 		return false, ""
 	}
 
@@ -131,6 +153,6 @@ func (_ SimpleStateHandler) Generator(cookieStore *sessions.CookieStore, w http.
 	return r.RequestURI
 }
 
-func (_ SimpleStateHandler) Verifier(cookieStore *sessions.CookieStore, r *http.Request, state string) (bool, string) {
+func (_ SimpleStateHandler) Verifier(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request, state string) (bool, string) {
 	return true, state
 }
