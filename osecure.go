@@ -24,7 +24,6 @@ var (
 	ErrorInvalidClientID                = errors.New("invalid client ID (audience of token)") // Authorize()
 	ErrorInvalidUserID                  = errors.New("invalid user ID (subject of token)")    // not used
 
-	ErrorInvalidState = errors.New("invalid state") // EndOAuth()
 )
 
 const (
@@ -33,6 +32,7 @@ const (
 	ErrorStringUnauthorized                      = "unauthorized"
 	ErrorStringCannotIntrospectToken             = "cannot introspect token"
 	ErrorStringCannotGetPermission               = "cannot get permission"
+	ErrorStringInvalidState                      = "invalid state"
 )
 
 func WrapError(msg string, err error) error {
@@ -264,7 +264,8 @@ func (s *OAuthSession) Authorize(w http.ResponseWriter, r *http.Request) (*AuthS
 		return nil, WrapError(ErrorStringUnauthorized, ErrorInvalidSession)
 	}
 
-	isPermissionUpdated, err := s.ensurePermUpdated(r.Context(), data)
+	var isPermissionUpdated bool
+	isPermissionUpdated, err = s.ensurePermUpdated(r.Context(), data)
 	if err != nil {
 		return nil, err
 	}
@@ -419,12 +420,13 @@ func (s *OAuthSession) EndOAuth(w http.ResponseWriter, r *http.Request) (string,
 	code := r.FormValue("code")
 	state := r.FormValue("state")
 
-	ok, continueURI := s.stateHandler.Verifier(s.cookieStore, w, r, state)
-	if !ok {
-		return "", ErrorInvalidState
+	continueURI, err := s.stateHandler.Verifier(s.cookieStore, w, r, state)
+	if err != nil {
+		return "", WrapError(ErrorStringInvalidState, err)
 	}
 
-	token, err := s.client.Exchange(r.Context(), code)
+	var token *oauth2.Token
+	token, err = s.client.Exchange(r.Context(), code)
 	if err != nil {
 		return "", WrapError(ErrorStringFailedToExchangeAuthorizationCode, err)
 	}
@@ -453,7 +455,7 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var statusCode int
 		switch {
-		case CompareErrorMessage(err, ErrorInvalidState.Error()):
+		case CompareErrorMessage(err, ErrorStringInvalidState):
 			fallthrough
 		case CompareErrorMessage(err, ErrorStringFailedToExchangeAuthorizationCode):
 			statusCode = 400

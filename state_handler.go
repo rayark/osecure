@@ -14,7 +14,7 @@ import (
 
 type StateHandler interface {
 	Generator(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request) (state string, err error)
-	Verifier(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request, state string) (ok bool, continueURI string)
+	Verifier(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request, state string) (continueURI string, err error)
 }
 
 // built-in state handler
@@ -25,6 +25,8 @@ const (
 
 var (
 	ErrorCannotGenerateCompleteState = errors.New("cannot generate complete state")
+	ErrorCannotRetrieveNonce         = errors.New("cannot retrieve nonce")
+	ErrorInvalidNonce                = errors.New("invalid nonce")
 )
 
 type DefaultStateHandler struct {
@@ -77,18 +79,21 @@ func (sh DefaultStateHandler) deleteNonceCookie(cookieStore *sessions.CookieStor
 }
 
 func (sh DefaultStateHandler) Generator(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request) (string, error) {
+	// backup current uri to continue_uri
 	continueURI := r.RequestURI
 
+	// generate nonce
 	nonce := make([]byte, nonceSize)
 	n, err := rand.Read(nonce)
+	if err != nil {
+		return "", err
+	}
 	if n != nonceSize {
 		err = ErrorCannotGenerateCompleteState
 		return "", err
 	}
-	if err != nil {
-		return "", err
-	}
 
+	// insert nonce and continue_uri to state
 	stateData := defaultStateData{
 		Nonce:       nonce,
 		ContinueURI: continueURI,
@@ -103,6 +108,7 @@ func (sh DefaultStateHandler) Generator(cookieStore *sessions.CookieStore, w htt
 
 	state := base64.RawURLEncoding.EncodeToString(stateBuf.Bytes())
 
+	// insert nonce to cookie
 	err = sh.setNonceCookie(cookieStore, w, r, nonce)
 	if err != nil {
 		return "", err
@@ -111,17 +117,17 @@ func (sh DefaultStateHandler) Generator(cookieStore *sessions.CookieStore, w htt
 	return state, nil
 }
 
-func (sh DefaultStateHandler) Verifier(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request, state string) (bool, string) {
+func (sh DefaultStateHandler) Verifier(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request, state string) (string, error) {
 	// retrieve nonce from cookie
 	nonce := sh.retrieveNonceCookie(cookieStore, r)
 	if len(nonce) <= 0 {
-		return false, ""
+		return "", ErrorCannotRetrieveNonce
 	}
 
 	// retrieve nonce and continue_uri from state
 	stateBytes, err := base64.RawURLEncoding.DecodeString(state)
 	if err != nil {
-		return false, ""
+		return "", err
 	}
 
 	var stateData defaultStateData
@@ -130,21 +136,21 @@ func (sh DefaultStateHandler) Verifier(cookieStore *sessions.CookieStore, w http
 	dec := json.NewDecoder(stateBuf)
 	err = dec.Decode(&stateData)
 	if err != nil {
-		return false, ""
+		return "", err
 	}
 
 	// compare nonce from state and nonce from cookie
 	if bytes.Compare(stateData.Nonce, nonce) != 0 {
-		return false, ""
+		return "", ErrorInvalidNonce
 	}
 
 	// delete nonce cookie
 	err = sh.deleteNonceCookie(cookieStore, w, r)
 	if err != nil {
-		return false, ""
+		return "", err
 	}
 
-	return true, stateData.ContinueURI
+	return stateData.ContinueURI, nil
 }
 
 type SimpleStateHandler struct{}
