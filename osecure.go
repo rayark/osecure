@@ -503,7 +503,7 @@ func (s *OAuthSession) retrieveAuthCookie(r *http.Request) *AuthSessionCookieDat
 		return nil
 	}
 
-	v, found := session.Values["data"]
+	v, found := session.Values["auth"]
 	if !found {
 		return nil
 	}
@@ -521,7 +521,7 @@ func (s *OAuthSession) setAuthCookie(w http.ResponseWriter, r *http.Request, coo
 	if err != nil {
 		return err
 	}
-	session.Values["data"] = cookieData
+	session.Values["auth"] = cookieData
 	err = session.Save(r, w)
 	return err
 }
@@ -531,7 +531,7 @@ func (s *OAuthSession) deleteAuthCookie(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		return err
 	}
-	delete(session.Values, "data")
+	delete(session.Values, "auth")
 	session.Options.MaxAge = -1
 	err = session.Save(r, w)
 	return err
