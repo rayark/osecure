@@ -96,8 +96,8 @@ func (sh DefaultStateHandler) Generator(cookieStore *sessions.CookieStore, w htt
 
 	// insert nonce and continue_uri to state
 	stateData := &defaultStateData{
-		Nonce:       nonceB64,
 		ContinueURI: continueURI,
+		Nonce:       nonceB64,
 	}
 
 	// insert state data to cookie
@@ -196,8 +196,8 @@ func (sh JWTStateHandler) Generator(cookieStore *sessions.CookieStore, w http.Re
 
 	// insert nonce and continue_uri to state
 	stateData := jwtStateData{
-		Nonce:       nonce,
 		ContinueURI: continueURI,
+		Nonce:       nonce,
 	}
 
 	var stateBuf bytes.Buffer
