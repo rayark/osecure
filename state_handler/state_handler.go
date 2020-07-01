@@ -29,7 +29,8 @@ func init() {
 }
 
 type DefaultStateHandler struct {
-	CookieName string
+	ContinueURI string
+	CookieName  string
 }
 
 type defaultStateData struct {
@@ -78,8 +79,11 @@ func (sh DefaultStateHandler) deleteCookie(cookieStore *sessions.CookieStore, w 
 }
 
 func (sh DefaultStateHandler) Generator(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request) (string, error) {
-	// backup current uri to continue_uri
-	continueURI := r.RequestURI
+	// use specified uri as continue_uri, or backup current uri to continue_uri
+	continueURI := sh.ContinueURI
+	if continueURI == "" {
+		continueURI = r.RequestURI
+	}
 
 	// generate nonce
 	nonce := make([]byte, nonceSize)
@@ -131,7 +135,8 @@ func (sh DefaultStateHandler) Verifier(cookieStore *sessions.CookieStore, w http
 }
 
 type JWTStateHandler struct {
-	CookieName string
+	ContinueURI string
+	CookieName  string
 }
 
 type jwtStateData struct {
@@ -180,8 +185,11 @@ func (sh JWTStateHandler) deleteCookie(cookieStore *sessions.CookieStore, w http
 }
 
 func (sh JWTStateHandler) Generator(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request) (string, error) {
-	// backup current uri to continue_uri
-	continueURI := r.RequestURI
+	// use specified uri as continue_uri, or backup current uri to continue_uri
+	continueURI := sh.ContinueURI
+	if continueURI == "" {
+		continueURI = r.RequestURI
+	}
 
 	// generate nonce
 	nonce := make([]byte, nonceSize)
@@ -265,10 +273,18 @@ func (sh JWTStateHandler) Verifier(cookieStore *sessions.CookieStore, w http.Res
 	return stateData.ContinueURI, nil
 }
 
-type SimpleStateHandler struct{}
+type SimpleStateHandler struct {
+	ContinueURI string
+}
 
-func (_ SimpleStateHandler) Generator(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request) string {
-	return r.RequestURI
+func (sh SimpleStateHandler) Generator(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request) string {
+	// use specified uri as continue_uri, or backup current uri to continue_uri
+	continueURI := sh.ContinueURI
+	if continueURI == "" {
+		continueURI = r.RequestURI
+	}
+
+	return continueURI
 }
 
 func (_ SimpleStateHandler) Verifier(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request, state string) (bool, string) {
