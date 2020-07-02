@@ -72,7 +72,7 @@ func (sh DefaultStateHandler) deleteCookie(cookieStore *sessions.CookieStore, w 
 	if err != nil {
 		return err
 	}
-	delete(session.Values, "hash")
+	delete(session.Values, "state")
 	session.Options.MaxAge = -1
 	err = session.Save(r, w)
 	return err
