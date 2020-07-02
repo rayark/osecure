@@ -195,7 +195,7 @@ func (s *OAuthSession) SecuredF(isAPI bool) func(http.HandlerFunc) http.HandlerF
 	}
 }
 
-// DestroySession destroy session.
+// ClearSession clear session.
 func (s *OAuthSession) ClearSession(w http.ResponseWriter, r *http.Request) error {
 	err := s.deleteAuthCookie(w, r)
 	if err != nil {
