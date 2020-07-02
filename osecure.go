@@ -406,7 +406,7 @@ func (s *OAuthSession) isValidClientID(clientID string) bool {
 
 // StartOAuth redirect to endpoint of OAuth service provider for OAuth flow.
 func (s *OAuthSession) StartOAuth(w http.ResponseWriter, r *http.Request) {
-	state, err := s.stateHandler.Generator(s.cookieStore, w, r)
+	state, err := s.stateHandler.Generate(s.cookieStore, w, r)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 	} else {
@@ -420,7 +420,7 @@ func (s *OAuthSession) EndOAuth(w http.ResponseWriter, r *http.Request) (string,
 	code := r.FormValue("code")
 	state := r.FormValue("state")
 
-	continueURI, err := s.stateHandler.Verifier(s.cookieStore, w, r, state)
+	continueURI, err := s.stateHandler.Verify(s.cookieStore, w, r, state)
 	if err != nil {
 		return "", WrapError(ErrorStringInvalidState, err)
 	}

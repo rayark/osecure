@@ -78,7 +78,7 @@ func (sh DefaultStateHandler) deleteCookie(cookieStore *sessions.CookieStore, w 
 	return err
 }
 
-func (sh DefaultStateHandler) Generator(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request) (string, error) {
+func (sh DefaultStateHandler) Generate(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request) (string, error) {
 	// use specified uri as continue_uri, or backup current uri to continue_uri
 	continueURI := sh.ContinueURI
 	if continueURI == "" {
@@ -113,7 +113,7 @@ func (sh DefaultStateHandler) Generator(cookieStore *sessions.CookieStore, w htt
 	return stateData.Nonce, nil
 }
 
-func (sh DefaultStateHandler) Verifier(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request, state string) (string, error) {
+func (sh DefaultStateHandler) Verify(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request, state string) (string, error) {
 	// retrieve state data from cookie
 	stateData := sh.retrieveCookie(cookieStore, r)
 	if stateData == nil {
@@ -184,7 +184,7 @@ func (sh JWTStateHandler) deleteCookie(cookieStore *sessions.CookieStore, w http
 	return err
 }
 
-func (sh JWTStateHandler) Generator(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request) (string, error) {
+func (sh JWTStateHandler) Generate(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request) (string, error) {
 	// use specified uri as continue_uri, or backup current uri to continue_uri
 	continueURI := sh.ContinueURI
 	if continueURI == "" {
@@ -231,7 +231,7 @@ func (sh JWTStateHandler) Generator(cookieStore *sessions.CookieStore, w http.Re
 	return state, nil
 }
 
-func (sh JWTStateHandler) Verifier(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request, state string) (string, error) {
+func (sh JWTStateHandler) Verify(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request, state string) (string, error) {
 	// retrieve expected checksum from cookie
 	expectedSum := sh.retrieveCookie(cookieStore, r)
 	if len(expectedSum) <= 0 {
@@ -277,16 +277,16 @@ type SimpleStateHandler struct {
 	ContinueURI string
 }
 
-func (sh SimpleStateHandler) Generator(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request) string {
+func (sh SimpleStateHandler) Generate(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request) (string, error) {
 	// use specified uri as continue_uri, or backup current uri to continue_uri
 	continueURI := sh.ContinueURI
 	if continueURI == "" {
 		continueURI = r.RequestURI
 	}
 
-	return continueURI
+	return continueURI, nil
 }
 
-func (_ SimpleStateHandler) Verifier(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request, state string) (bool, string) {
-	return true, state
+func (_ SimpleStateHandler) Verify(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request, state string) (string, error) {
+	return state, nil
 }
