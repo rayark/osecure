@@ -266,7 +266,10 @@ func (s *OAuthSession) SecuredF(isAPI bool) func(http.HandlerFunc) http.HandlerF
 					if isAPI {
 						http.Error(w, err.Error(), 401)
 					} else {
-						s.StartOAuth(w, r)
+						err = s.StartOAuth(w, r)
+						if err != nil {
+							http.Error(w, err.Error(), 500)
+						}
 					}
 				case CompareErrorMessage(err, ErrorStringCannotGetPermission):
 					http.Error(w, err.Error(), 403)
@@ -289,13 +292,14 @@ func (s *OAuthSession) SecuredH(isAPI bool) func(http.Handler) http.Handler {
 }
 
 // StartOAuth redirect to endpoint of OAuth service provider for OAuth flow.
-func (s *OAuthSession) StartOAuth(w http.ResponseWriter, r *http.Request) {
+func (s *OAuthSession) StartOAuth(w http.ResponseWriter, r *http.Request) error {
 	state, err := s.stateHandler.Generate(s.cookieStore, w, r)
 	if err != nil {
-		http.Error(w, err.Error(), 500)
-	} else {
-		http.Redirect(w, r, s.client.AuthCodeURL(state), 303)
+		return err
 	}
+
+	http.Redirect(w, r, s.client.AuthCodeURL(state), 303)
+	return nil
 }
 
 // EndOAuth finish OAuth flow.
