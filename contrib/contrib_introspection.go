@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"github.com/rayark/osecure/v3"
+	"github.com/rayark/osecure/v4"
 )
 
 // predefined implementation
