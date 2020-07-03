@@ -67,32 +67,26 @@ func (s set) contain(x string) bool {
 }
 
 func init() {
-	//gob.Register(&time.Time{})
 	gob.Register(&AuthSessionCookieData{})
 }
 
 type AuthSessionData struct {
-	UserID   string //
-	ClientID string //
+	UserID   string
+	ClientID string
 	*AuthSessionCookieData
 }
 
 type AuthSessionCookieData struct {
-	//UserID              string
-	//ClientID            string
 	Token                *oauth2.Token
 	Permissions          []string
 	PermissionsExpiresAt time.Time
 }
 
-//func newAuthSessionCookieData(userID string, clientID string, token *oauth2.Token) *AuthSessionCookieData {
 func newAuthSessionCookieData(token *oauth2.Token) *AuthSessionCookieData {
 	if token.Expiry.IsZero() {
 		token.Expiry = time.Now().Add(time.Duration(SessionExpireTime) * time.Second)
 	}
 	return &AuthSessionCookieData{
-		//UserID:              userID,
-		//ClientID:            clientID,
 		Token:                token,
 		Permissions:          []string{},
 		PermissionsExpiresAt: time.Time{}, // Zero time
@@ -351,55 +345,6 @@ func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*AuthSess
 	return data, isTokenFromAuthorizationHeader, nil
 }
 
-/*
-func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*AuthSessionData, bool, error) {
-	var isTokenFromAuthorizationHeader bool
-
-	cookieData := s.retrieveAuthCookie(r)
-	if cookieData == nil || cookieData.isTokenExpired() {
-		userID, clientID, token, err := s.getAndIntrospectBearerToken(r)
-		if err != nil {
-			return nil, false, err
-		}
-
-		cookieData = newAuthSessionCookieData(userID, clientID, token)
-
-		isTokenFromAuthorizationHeader = true
-	} else {
-		isTokenFromAuthorizationHeader = false
-	}
-
-	data := &AuthSessionData{
-		AuthSessionCookieData: cookieData,
-	}
-
-	if !s.isValidClientID(data.ClientID) {
-		return nil, false, ErrorInvalidClientID
-	}
-
-	return data, isTokenFromAuthorizationHeader, nil
-}
-
-func (s *OAuthSession) getAndIntrospectBearerToken(r *http.Request) (userID string, clientID string, token *oauth2.Token, err error) {
-	var bearerToken string
-	bearerToken, err = s.getBearerToken(r)
-	if err != nil {
-		return
-	}
-
-	var expiresAt int64
-	var extra map[string]interface{}
-	userID, clientID, expiresAt, extra, err = s.tokenVerifier.IntrospectTokenFunc(r.Context(), bearerToken)
-	if err != nil {
-		err = WrapError(ErrorStringCannotIntrospectToken, err)
-		return
-	}
-
-	token = makeBearerToken(bearerToken, expiresAt).WithExtra(extra)
-	return
-}
-*/
-
 func (s *OAuthSession) isValidClientID(clientID string) bool {
 	return clientID == s.client.ClientID || s.appIDSet.contain(clientID)
 }
@@ -433,13 +378,6 @@ func (s *OAuthSession) EndOAuth(w http.ResponseWriter, r *http.Request) (string,
 
 	// OAuth flow is already completed, error after that should not relate to OAuth flow
 
-	// TODO: how to get subject (account ID) when using exchange code only?
-	/*userID, clientID, _, _, err := s.tokenVerifier.IntrospectTokenFunc(r.Context(), token.AccessToken)
-	if err != nil {
-		return "", WrapError(ErrorStringCannotIntrospectToken, err)
-	}*/
-
-	//err = s.setAuthCookie(w, r, newAuthSessionCookieData(userID, clientID, token))
 	err = s.setAuthCookie(w, r, newAuthSessionCookieData(token))
 	if err != nil {
 		return "", WrapError(ErrorStringUnableToSetCookie, err)
@@ -448,8 +386,7 @@ func (s *OAuthSession) EndOAuth(w http.ResponseWriter, r *http.Request) (string,
 	return continueURI, nil
 }
 
-// CallbackView is a http handler for the authentication redirection of the
-// auth server.
+// CallbackView is a http handler for the authentication redirection of the auth server.
 func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 	continueURI, err := s.EndOAuth(w, r)
 	if err != nil {
