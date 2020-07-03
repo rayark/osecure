@@ -134,17 +134,17 @@ func (sh DefaultStateHandler) Verify(cookieStore *sessions.CookieStore, w http.R
 	return stateData.ContinueURI, nil
 }
 
-type JWTStateHandler struct {
+type JSONStateHandler struct {
 	ContinueURI string
 	CookieName  string
 }
 
-type jwtStateData struct {
+type jsonStateData struct {
 	ContinueURI string `json:"continue_uri"`
 	Nonce       []byte `json:"nonce"`
 }
 
-func (sh JWTStateHandler) retrieveCookie(cookieStore *sessions.CookieStore, r *http.Request) []byte {
+func (sh JSONStateHandler) retrieveCookie(cookieStore *sessions.CookieStore, r *http.Request) []byte {
 	session, err := cookieStore.Get(r, sh.CookieName)
 	if err != nil {
 		return nil
@@ -163,7 +163,7 @@ func (sh JWTStateHandler) retrieveCookie(cookieStore *sessions.CookieStore, r *h
 	return sum
 }
 
-func (sh JWTStateHandler) setCookie(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request, sum []byte) error {
+func (sh JSONStateHandler) setCookie(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request, sum []byte) error {
 	session, err := cookieStore.New(r, sh.CookieName)
 	if err != nil {
 		return err
@@ -173,7 +173,7 @@ func (sh JWTStateHandler) setCookie(cookieStore *sessions.CookieStore, w http.Re
 	return err
 }
 
-func (sh JWTStateHandler) deleteCookie(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request) error {
+func (sh JSONStateHandler) deleteCookie(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request) error {
 	session, err := cookieStore.Get(r, sh.CookieName)
 	if err != nil {
 		return err
@@ -184,7 +184,7 @@ func (sh JWTStateHandler) deleteCookie(cookieStore *sessions.CookieStore, w http
 	return err
 }
 
-func (sh JWTStateHandler) Generate(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request) (string, error) {
+func (sh JSONStateHandler) Generate(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request) (string, error) {
 	// use specified uri as continue_uri, or backup current uri to continue_uri
 	continueURI := sh.ContinueURI
 	if continueURI == "" {
@@ -203,7 +203,7 @@ func (sh JWTStateHandler) Generate(cookieStore *sessions.CookieStore, w http.Res
 	}
 
 	// insert nonce and continue_uri to state
-	stateData := jwtStateData{
+	stateData := jsonStateData{
 		ContinueURI: continueURI,
 		Nonce:       nonce,
 	}
@@ -231,7 +231,7 @@ func (sh JWTStateHandler) Generate(cookieStore *sessions.CookieStore, w http.Res
 	return state, nil
 }
 
-func (sh JWTStateHandler) Verify(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request, state string) (string, error) {
+func (sh JSONStateHandler) Verify(cookieStore *sessions.CookieStore, w http.ResponseWriter, r *http.Request, state string) (string, error) {
 	// retrieve expected checksum from cookie
 	expectedSum := sh.retrieveCookie(cookieStore, r)
 	if len(expectedSum) <= 0 {
@@ -255,7 +255,7 @@ func (sh JWTStateHandler) Verify(cookieStore *sessions.CookieStore, w http.Respo
 	}
 
 	// retrieve nonce and continue_uri from state
-	var stateData jwtStateData
+	var stateData jsonStateData
 
 	stateBuf := bytes.NewBuffer(stateBytes)
 	dec := json.NewDecoder(stateBuf)
