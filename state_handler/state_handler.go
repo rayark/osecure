@@ -98,7 +98,7 @@ func (sh DefaultStateHandler) Generate(cookieStore *sessions.CookieStore, w http
 
 	nonceB64 := base64.RawURLEncoding.EncodeToString(nonce)
 
-	// insert nonce and continue_uri to state
+	// insert continue_uri and nonce to state
 	stateData := &defaultStateData{
 		ContinueURI: continueURI,
 		Nonce:       nonceB64,
@@ -202,11 +202,17 @@ func (sh JSONStateHandler) Generate(cookieStore *sessions.CookieStore, w http.Re
 		return "", err
 	}
 
-	// insert nonce and continue_uri to state
+	// insert continue_uri and nonce to state
 	stateData := jsonStateData{
 		ContinueURI: continueURI,
 		Nonce:       nonce,
 	}
+
+	/*var stateBytes []byte
+	stateBytes, err = json.Marshal(stateData)
+	if err != nil {
+		return "", err
+	}*/
 
 	var stateBuf bytes.Buffer
 	enc := json.NewEncoder(&stateBuf)
@@ -214,12 +220,13 @@ func (sh JSONStateHandler) Generate(cookieStore *sessions.CookieStore, w http.Re
 	if err != nil {
 		return "", err
 	}
+	stateBytes := stateBuf.Bytes()
 
-	state := base64.RawURLEncoding.EncodeToString(stateBuf.Bytes())
+	state := base64.RawURLEncoding.EncodeToString(stateBytes)
 
 	// calculate checksum
 	h := sha256.New()
-	h.Write(stateBuf.Bytes())
+	h.Write(stateBytes)
 	sum := h.Sum(nil)
 
 	// insert checksum to cookie
@@ -254,8 +261,13 @@ func (sh JSONStateHandler) Verify(cookieStore *sessions.CookieStore, w http.Resp
 		return "", ErrorInvalidState
 	}
 
-	// retrieve nonce and continue_uri from state
+	// retrieve continue_uri and nonce from state
 	var stateData jsonStateData
+
+	/*err = json.Unmarshal(stateBytes, &stateData)
+	if err != nil {
+		return "", err
+	}*/
 
 	stateBuf := bytes.NewBuffer(stateBytes)
 	dec := json.NewDecoder(stateBuf)
