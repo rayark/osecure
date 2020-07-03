@@ -15,7 +15,7 @@ import (
 	"github.com/gorilla/sessions"
 )
 
-var (
+const (
 	SessionExpireTime    = 86400
 	PermissionExpireTime = 600
 )
@@ -28,12 +28,6 @@ const (
 
 func init() {
 	gob.Register(&AuthSessionCookieData{})
-}
-
-type AuthSessionData struct {
-	UserID   string
-	ClientID string
-	*AuthSessionCookieData
 }
 
 type AuthSessionCookieData struct {
@@ -59,6 +53,49 @@ func (cookieData *AuthSessionCookieData) isTokenExpired() bool {
 
 func (cookieData *AuthSessionCookieData) isPermissionsExpired() bool {
 	return !cookieData.PermissionsExpiresAt.After(time.Now())
+}
+
+// GetPermissions lists the permissions of the current user and client.
+func (cookieData *AuthSessionCookieData) GetPermissions() []string {
+	return cookieData.Permissions
+}
+
+// HasPermission checks if the current user has such permission.
+func (cookieData *AuthSessionCookieData) HasPermission(permission string) bool {
+	perms := cookieData.GetPermissions()
+
+	id := sort.SearchStrings(perms, permission)
+	result := id < len(perms) && perms[id] == permission
+
+	return result
+}
+
+type AuthSessionData struct {
+	UserID   string
+	ClientID string
+	*AuthSessionCookieData
+}
+
+// GetUserID get user ID of the current user session.
+func (data *AuthSessionData) GetUserID() string {
+	return data.UserID
+}
+
+// GetClientID get client ID of the current user session.
+func (data *AuthSessionData) GetClientID() string {
+	return data.ClientID
+}
+
+// GetRequestSessionData get session data from request context.
+func GetRequestSessionData(r *http.Request) (*AuthSessionData, bool) {
+	sessionData, ok := r.Context().Value(contextKeySessionData).(*AuthSessionData)
+	return sessionData, ok
+}
+
+// AttachRequestWithSessionData append session data into request context.
+func AttachRequestWithSessionData(r *http.Request, sessionData *AuthSessionData) *http.Request {
+	contextWithSessionData := context.WithValue(r.Context(), contextKeySessionData, sessionData)
+	return r.WithContext(contextWithSessionData)
 }
 
 // CookieConfig is a config of github.com/gorilla/securecookie.
@@ -116,143 +153,8 @@ func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConf
 	}
 }
 
-// SecuredH is a http middleware for http.Handler to check if the current user has logged in.
-func (s *OAuthSession) SecuredH(isAPI bool) func(http.Handler) http.Handler {
-	return func(h http.Handler) http.Handler {
-		return http.Handler(s.SecuredF(isAPI)(h.ServeHTTP))
-	}
-}
-
-// SecuredF is a http middleware for http.HandlerFunc to check if the current user has logged in.
-func (s *OAuthSession) SecuredF(isAPI bool) func(http.HandlerFunc) http.HandlerFunc {
-	return func(h http.HandlerFunc) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			sessionData, err := s.Authorize(w, r)
-			if err != nil {
-				switch {
-				case CompareErrorMessage(err, ErrorStringUnauthorized):
-					if isAPI {
-						http.Error(w, err.Error(), 401)
-					} else {
-						s.StartOAuth(w, r)
-					}
-				case CompareErrorMessage(err, ErrorStringCannotGetPermission):
-					http.Error(w, err.Error(), 403)
-				default:
-					http.Error(w, err.Error(), 500)
-				}
-			} else {
-				requestInner := AttachRequestWithSessionData(r, sessionData)
-				h(w, requestInner)
-			}
-		}
-	}
-}
-
-// ClearSession clear session.
-func (s *OAuthSession) ClearSession(w http.ResponseWriter, r *http.Request) error {
-	err := s.deleteAuthCookie(w, r)
-	if err != nil {
-		err = WrapError(ErrorStringUnableToSetCookie, err)
-	}
-	return err
-}
-
-// LogOut is a http handler to log out the user.
-func (s *OAuthSession) LogOut(redirect string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		err := s.ClearSession(w, r)
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-		} else {
-			http.Redirect(w, r, redirect, 303)
-		}
-	}
-}
-
-// AttachRequestWithSessionData append session data into request context.
-func AttachRequestWithSessionData(r *http.Request, sessionData *AuthSessionData) *http.Request {
-	contextWithSessionData := context.WithValue(r.Context(), contextKeySessionData, sessionData)
-	return r.WithContext(contextWithSessionData)
-}
-
-// GetRequestSessionData get session data from request context.
-func GetRequestSessionData(r *http.Request) (*AuthSessionData, bool) {
-	sessionData, ok := r.Context().Value(contextKeySessionData).(*AuthSessionData)
-	return sessionData, ok
-}
-
-// HasPermission checks if the current user has such permission.
-func (data *AuthSessionData) HasPermission(permission string) bool {
-	perms := data.GetPermissions()
-
-	id := sort.SearchStrings(perms, permission)
-	result := id < len(perms) && perms[id] == permission
-
-	return result
-}
-
-// GetPermissions lists the permissions of the current user and client.
-func (data *AuthSessionData) GetPermissions() []string {
-	return data.Permissions
-}
-
-// GetUserID get user ID of the current user session.
-func (data *AuthSessionData) GetUserID() string {
-	return data.UserID
-}
-
-// GetClientID get client ID of the current user session.
-func (data *AuthSessionData) GetClientID() string {
-	return data.ClientID
-}
-
-// Authorize authorize user by verifying cookie or bearer token.
-// if user is authorized, return valid session data. else, return error.
-func (s *OAuthSession) Authorize(w http.ResponseWriter, r *http.Request) (*AuthSessionData, error) {
-	data, isTokenFromAuthorizationHeader, err := s.getAuthSessionDataFromRequest(r)
-	if err != nil {
-		return nil, WrapError(ErrorStringUnauthorized, err)
-	}
-	if data == nil || data.isTokenExpired() {
-		return nil, WrapError(ErrorStringUnauthorized, ErrorInvalidSession)
-	}
-
-	var isPermissionUpdated bool
-	isPermissionUpdated, err = s.ensurePermUpdated(r.Context(), data)
-	if err != nil {
-		return nil, err
-	}
-
-	isCookieDataModified := isTokenFromAuthorizationHeader || isPermissionUpdated
-
-	if isCookieDataModified {
-		err = s.setAuthCookie(w, r, data.AuthSessionCookieData)
-		if err != nil {
-			return nil, WrapError(ErrorStringUnableToSetCookie, err)
-		}
-	}
-
-	return data, nil
-}
-
-func (s *OAuthSession) ensurePermUpdated(ctx context.Context, data *AuthSessionData) (bool, error) {
-	if !data.isPermissionsExpired() {
-		return false, nil
-	}
-
-	permissions, err := s.tokenVerifier.GetPermissionsFunc(ctx, data.UserID, data.ClientID, data.Token)
-	if err != nil {
-		return false, WrapError(ErrorStringCannotGetPermission, err)
-	}
-
-	data.Permissions = permissions
-	data.PermissionsExpiresAt = time.Now().Add(time.Duration(PermissionExpireTime) * time.Second)
-
-	// Sort the string, as sort.SearchStrings needs sorted []string.
-	sort.Strings(data.Permissions)
-
-	return true, nil
+func (s *OAuthSession) isValidClientID(clientID string) bool {
+	return clientID == s.client.ClientID || s.appIDSet.contain(clientID)
 }
 
 func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*AuthSessionData, bool, error) {
@@ -305,8 +207,85 @@ func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*AuthSess
 	return data, isTokenFromAuthorizationHeader, nil
 }
 
-func (s *OAuthSession) isValidClientID(clientID string) bool {
-	return clientID == s.client.ClientID || s.appIDSet.contain(clientID)
+func (s *OAuthSession) ensurePermUpdated(ctx context.Context, data *AuthSessionData) (bool, error) {
+	if !data.isPermissionsExpired() {
+		return false, nil
+	}
+
+	permissions, err := s.tokenVerifier.GetPermissionsFunc(ctx, data.UserID, data.ClientID, data.Token)
+	if err != nil {
+		return false, WrapError(ErrorStringCannotGetPermission, err)
+	}
+
+	data.Permissions = permissions
+	data.PermissionsExpiresAt = time.Now().Add(time.Duration(PermissionExpireTime) * time.Second)
+
+	// Sort the string, as sort.SearchStrings needs sorted []string.
+	sort.Strings(data.Permissions)
+
+	return true, nil
+}
+
+// Authorize authorize user by verifying cookie or bearer token.
+// if user is authorized, return valid session data. else, return error.
+func (s *OAuthSession) Authorize(w http.ResponseWriter, r *http.Request) (*AuthSessionData, error) {
+	data, isTokenFromAuthorizationHeader, err := s.getAuthSessionDataFromRequest(r)
+	if err != nil {
+		return nil, WrapError(ErrorStringUnauthorized, err)
+	}
+	if data == nil || data.isTokenExpired() {
+		return nil, WrapError(ErrorStringUnauthorized, ErrorInvalidSession)
+	}
+
+	var isPermissionUpdated bool
+	isPermissionUpdated, err = s.ensurePermUpdated(r.Context(), data)
+	if err != nil {
+		return nil, err
+	}
+
+	isCookieDataModified := isTokenFromAuthorizationHeader || isPermissionUpdated
+
+	if isCookieDataModified {
+		err = s.setAuthCookie(w, r, data.AuthSessionCookieData)
+		if err != nil {
+			return nil, WrapError(ErrorStringUnableToSetCookie, err)
+		}
+	}
+
+	return data, nil
+}
+
+// SecuredF is a http middleware for http.HandlerFunc to check if the current user has logged in.
+func (s *OAuthSession) SecuredF(isAPI bool) func(http.HandlerFunc) http.HandlerFunc {
+	return func(h http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			sessionData, err := s.Authorize(w, r)
+			if err != nil {
+				switch {
+				case CompareErrorMessage(err, ErrorStringUnauthorized):
+					if isAPI {
+						http.Error(w, err.Error(), 401)
+					} else {
+						s.StartOAuth(w, r)
+					}
+				case CompareErrorMessage(err, ErrorStringCannotGetPermission):
+					http.Error(w, err.Error(), 403)
+				default:
+					http.Error(w, err.Error(), 500)
+				}
+			} else {
+				requestInner := AttachRequestWithSessionData(r, sessionData)
+				h(w, requestInner)
+			}
+		}
+	}
+}
+
+// SecuredH is a http middleware for http.Handler to check if the current user has logged in.
+func (s *OAuthSession) SecuredH(isAPI bool) func(http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		return http.Handler(s.SecuredF(isAPI)(h.ServeHTTP))
+	}
 }
 
 // StartOAuth redirect to endpoint of OAuth service provider for OAuth flow.
@@ -362,6 +341,27 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), statusCode)
 	} else {
 		http.Redirect(w, r, continueURI, 303)
+	}
+}
+
+// ClearSession clear session.
+func (s *OAuthSession) ClearSession(w http.ResponseWriter, r *http.Request) error {
+	err := s.deleteAuthCookie(w, r)
+	if err != nil {
+		err = WrapError(ErrorStringUnableToSetCookie, err)
+	}
+	return err
+}
+
+// LogOut is a http handler to log out the user.
+func (s *OAuthSession) LogOut(redirect string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		err := s.ClearSession(w, r)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+		} else {
+			http.Redirect(w, r, redirect, 303)
+		}
 	}
 }
 
