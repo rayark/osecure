@@ -1,6 +1,6 @@
-module github.com/rayark/osecure/v3
+module github.com/rayark/osecure/v4
 
-go 1.11
+go 1.13
 
 require (
 	github.com/golang/protobuf v1.4.2 // indirect

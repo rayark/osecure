@@ -3,13 +3,31 @@ package main
 import (
 	"fmt"
 	"github.com/julienschmidt/httprouter"
-	"github.com/rayark/osecure/v3"
-	osecure_contrib "github.com/rayark/osecure/v3/contrib"
-	"github.com/rayark/osecure/v3/inter_server"
+	"github.com/rayark/osecure/v4"
+	osecure_contrib "github.com/rayark/osecure/v4/contrib"
+	"github.com/rayark/osecure/v4/inter_server"
+	"github.com/rayark/osecure/v4/state_handler"
 	"github.com/rayark/zin"
 	"github.com/rayark/zin/middleware"
 	"log"
 	"net/http"
+)
+
+const (
+	indexPage = `
+<!DOCTYPE html>
+<html>
+<head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8" /></head>
+<body>
+    <ul>
+        <li><a href="/login">login</a></li>
+        <li><a href="/meowmeow">meowmeow</a></li>
+        <li><a href="/logout">logout</a></li>
+        <li><a href="/get_server_token">get_server_token</a></li>
+    </ul>
+</body>
+</html>
+`
 )
 
 type App struct {
@@ -18,22 +36,32 @@ type App struct {
 }
 
 func (app *App) Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	fmt.Fprint(w, "Index\n")
+	w.Header().Set("Content-Type", "text/html; charset=UTF-8")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, indexPage)
 }
 
 func (app *App) LoggedIn(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	w.Header().Set("Content-Type", "text/plain; charset=UTF-8")
+	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "Logged in\n")
 }
 
 func (app *App) LogOut(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	w.Header().Set("Content-Type", "text/plain; charset=UTF-8")
+	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "Logged out\n")
 }
 
 func (app *App) Meowmeow(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	w.Header().Set("Content-Type", "text/plain; charset=UTF-8")
+
 	sessionData, ok := osecure.GetRequestSessionData(r)
 	if ok && sessionData.HasPermission("cat") {
+		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "Meowmeow =OwO=\n")
 	} else {
+		w.WriteHeader(http.StatusForbidden)
 		fmt.Fprint(w, "No meow for you\n")
 	}
 }
@@ -56,6 +84,9 @@ func (app *App) GetServerToken(w http.ResponseWriter, r *http.Request, _ httprou
 	if err != nil {
 		panic(err)
 	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=UTF-8")
+	w.WriteHeader(http.StatusOK)
 	fmt.Fprintln(w, token)
 }
 
@@ -63,8 +94,8 @@ func main() {
 	app := &App{
 		osecure: osecure.NewOAuthSession("simple_client",
 			&osecure.CookieConfig{
-				SigningKey:    "44G/44KJ44GP44KL44G+44G744KK44KT44GP44KL44KK44KT44GxIO+8iOKXj+KAsuKIgOKAte+8ieODjuKZoQ==",
-				EncryptionKey: "44GP44KL44KK44KT44Gx44CcICDlkpXlmpXpnYjms6I=",
+				AuthenticationKey: "44G/44KJ44GP44KL44G+44G744KK44KT44GP44KL44KK44KT44GxIO+8iOKXj+KAsuKIgOKAte+8ieODjuKZoQ==",
+				EncryptionKey:     "44GP44KL44KK44KT44Gx44CcICDlkpXlmpXpnYjms6I=",
 			},
 			&osecure.OAuthConfig{
 				ClientID:     "57063c36f32193000195a9f3.sentry.rayark.com",
@@ -74,8 +105,10 @@ func main() {
 				TokenURL:     "http://localhost:8000/token",
 				AppIDList:    []string{},
 			},
-			&osecure.TokenVerifier{IntrospectTokenFunc: osecure_contrib.GoogleIntrospection(), GetPermissionsFunc: osecure_contrib.CommonPermissionRoles([]string{"user", "cat"})},
+			//&osecure.TokenVerifier{IntrospectTokenFunc: osecure_contrib.GoogleIntrospection(), GetPermissionsFunc: osecure_contrib.CommonPermissionRoles([]string{"user", "cat"})},
+			&osecure.TokenVerifier{IntrospectTokenFunc: osecure_contrib.GoogleIntrospection(), GetPermissionsFunc: osecure_contrib.PredefinedPermissionRoles(map[string][]string{"123456789012345678901": {"user", "cat"}})},
 			"http://localhost:8080/auth",
+			state_handler.DefaultStateHandler{ContinueURI: "", CookieName: "simple_client_state"},
 		),
 		interServer: inter_server.NewInterServer(
 			&inter_server.InterServerConfig{
@@ -90,9 +123,9 @@ func main() {
 
 	def := zin.NewGroup("/", middleware.Logger)
 	def.R(router.GET, "", app.Index)
-	def.R(router.GET, "login", zin.WrapS(app.osecure.SecuredH)(app.LoggedIn))
-	def.R(router.GET, "meowmeow", zin.WrapS(app.osecure.SecuredH)(app.Meowmeow))
-	def.R(router.GET, "logout", zin.WrapH(app.osecure.ExpireSession("/")))
+	def.R(router.GET, "login", zin.WrapS(app.osecure.SecuredH(false))(app.LoggedIn))
+	def.R(router.GET, "meowmeow", zin.WrapS(app.osecure.SecuredH(true))(app.Meowmeow))
+	def.R(router.GET, "logout", zin.WrapH(app.osecure.LogOut("/")))
 	def.R(router.GET, "get_server_token", app.GetServerToken)
 	def.R(router.GET, "auth", zin.WrapF(app.osecure.CallbackView))
 

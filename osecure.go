@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/gob"
-	"errors"
 	"golang.org/x/oauth2"
 	"net/http"
 	"sort"
@@ -16,15 +15,7 @@ import (
 	"github.com/gorilla/sessions"
 )
 
-var (
-	ErrorInvalidSession                   = errors.New("invalid session")
-	ErrorInvalidAuthorizationHeaderFormat = errors.New("invalid authorization header format")
-	ErrorUnsupportedAuthorizationType     = errors.New("unsupported authorization type")
-	ErrorInvalidClientID                  = errors.New("invalid client ID (audience of token)")
-	ErrorInvalidUserID                    = errors.New("invalid user ID (subject of token)")
-)
-
-var (
+const (
 	SessionExpireTime    = 86400
 	PermissionExpireTime = 600
 )
@@ -35,64 +26,84 @@ const (
 	contextKeySessionData = contextKey(1)
 )
 
-type set map[string]struct{}
-
-func (s set) add(x string) {
-	s[x] = struct{}{}
-}
-
-func (s set) contain(x string) bool {
-	_, ok := s[x]
-	return ok
-}
-
 func init() {
-	//gob.Register(&time.Time{})
 	gob.Register(&AuthSessionCookieData{})
 }
 
-type AuthSessionData struct {
-	UserID   string //
-	ClientID string //
-	*AuthSessionCookieData
-}
-
 type AuthSessionCookieData struct {
-	//UserID              string
-	//ClientID            string
-	Token               *oauth2.Token
-	Permissions         []string
-	PermissionsExpireAt time.Time
+	Token                *oauth2.Token
+	Permissions          []string
+	PermissionsExpiresAt time.Time
 }
 
-//func newAuthSessionCookieData(userID string, clientID string, token *oauth2.Token) *AuthSessionCookieData {
 func newAuthSessionCookieData(token *oauth2.Token) *AuthSessionCookieData {
 	if token.Expiry.IsZero() {
 		token.Expiry = time.Now().Add(time.Duration(SessionExpireTime) * time.Second)
 	}
 	return &AuthSessionCookieData{
-		//UserID:              userID,
-		//ClientID:            clientID,
-		Token:               token,
-		Permissions:         []string{},
-		PermissionsExpireAt: time.Time{}, // Zero time
+		Token:                token,
+		Permissions:          []string{},
+		PermissionsExpiresAt: time.Time{}, // Zero time
 	}
 }
 
 func (cookieData *AuthSessionCookieData) isTokenExpired() bool {
-	return cookieData.Token.Expiry.Before(time.Now())
+	return !cookieData.Token.Expiry.After(time.Now())
 }
 
 func (cookieData *AuthSessionCookieData) isPermissionsExpired() bool {
-	return cookieData.PermissionsExpireAt.Before(time.Now())
+	return !cookieData.PermissionsExpiresAt.After(time.Now())
 }
 
-// CookieConfig is a config of github.com/gorilla/securecookie. Recommended
-// configurations are base64 of 64 bytes key for SigningKey, and base64 of 32
-// bytes key for EncryptionKey.
+// GetPermissions lists the permissions of the current user and client.
+func (cookieData *AuthSessionCookieData) GetPermissions() []string {
+	return cookieData.Permissions
+}
+
+// HasPermission checks if the current user has such permission.
+func (cookieData *AuthSessionCookieData) HasPermission(permission string) bool {
+	perms := cookieData.GetPermissions()
+
+	id := sort.SearchStrings(perms, permission)
+	result := id < len(perms) && perms[id] == permission
+
+	return result
+}
+
+type AuthSessionData struct {
+	UserID   string
+	ClientID string
+	*AuthSessionCookieData
+}
+
+// GetUserID get user ID of the current user session.
+func (data *AuthSessionData) GetUserID() string {
+	return data.UserID
+}
+
+// GetClientID get client ID of the current user session.
+func (data *AuthSessionData) GetClientID() string {
+	return data.ClientID
+}
+
+// GetRequestSessionData get session data from request context.
+func GetRequestSessionData(r *http.Request) (*AuthSessionData, bool) {
+	sessionData, ok := r.Context().Value(contextKeySessionData).(*AuthSessionData)
+	return sessionData, ok
+}
+
+// AttachRequestWithSessionData append session data into request context.
+func AttachRequestWithSessionData(r *http.Request, sessionData *AuthSessionData) *http.Request {
+	contextWithSessionData := context.WithValue(r.Context(), contextKeySessionData, sessionData)
+	return r.WithContext(contextWithSessionData)
+}
+
+// CookieConfig is a config of github.com/gorilla/securecookie.
+// Recommended configurations are base64 of 64 bytes key for AuthenticationKey,
+// and base64 of 32 bytes key for EncryptionKey.
 type CookieConfig struct {
-	SigningKey    string `yaml:"signing_key" env:"skey"`
-	EncryptionKey string `yaml:"encryption_key" env:"ekey"`
+	AuthenticationKey string `yaml:"authentication_key" env:"akey"`
+	EncryptionKey     string `yaml:"encryption_key" env:"ekey"`
 }
 
 // OAuthConfig is a config of osecure.
@@ -111,10 +122,11 @@ type OAuthSession struct {
 	client        *oauth2.Config
 	appIDSet      set
 	tokenVerifier *TokenVerifier
+	stateHandler  StateHandler
 }
 
 // NewOAuthSession creates osecure session.
-func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConfig, tokenVerifier *TokenVerifier, callbackURL string) *OAuthSession {
+func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConfig, tokenVerifier *TokenVerifier, callbackURL string, stateHandler StateHandler) *OAuthSession {
 	client := &oauth2.Config{
 		ClientID:     oauthConf.ClientID,
 		ClientSecret: oauthConf.ClientSecret,
@@ -137,115 +149,12 @@ func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConf
 		client:        client,
 		appIDSet:      appIDSet,
 		tokenVerifier: tokenVerifier,
+		stateHandler:  stateHandler,
 	}
 }
 
-// SecuredH is a http middleware for http.Handler to check if the current user has logged in.
-func (s *OAuthSession) SecuredH(h http.Handler) http.Handler {
-	return s.SecuredF(h.ServeHTTP)
-}
-
-// SecuredF is a http middleware for http.HandlerFunc to check if the current user has logged in.
-func (s *OAuthSession) SecuredF(h http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		sessionData, err := s.Authorize(w, r)
-		if err != nil {
-			s.StartOAuth(w, r)
-		} else {
-			requestInner := AttachRequestWithSessionData(r, sessionData)
-			h(w, requestInner)
-		}
-	}
-}
-
-// ExpireSession is a http function to log out the user.
-func (s *OAuthSession) ExpireSession(redirect string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		s.expireAuthCookie(w, r)
-		http.Redirect(w, r, redirect, 303)
-	}
-}
-
-// AttachRequestWithSessionData append session data into request context
-func AttachRequestWithSessionData(r *http.Request, sessionData *AuthSessionData) *http.Request {
-	contextWithSessionData := context.WithValue(r.Context(), contextKeySessionData, sessionData)
-	return r.WithContext(contextWithSessionData)
-}
-
-// GetRequestSessionData get session data from request context
-func GetRequestSessionData(r *http.Request) (*AuthSessionData, bool) {
-	sessionData, ok := r.Context().Value(contextKeySessionData).(*AuthSessionData)
-	return sessionData, ok
-}
-
-// HasPermission checks if the current user has such permission.
-func (data *AuthSessionData) HasPermission(permission string) bool {
-	perms := data.GetPermissions()
-
-	id := sort.SearchStrings(perms, permission)
-	result := id < len(perms) && perms[id] == permission
-
-	return result
-}
-
-// GetPermissions lists the permissions of the current user and client.
-func (data *AuthSessionData) GetPermissions() []string {
-	return data.Permissions
-}
-
-// GetUserID get user ID of the current user session.
-func (data *AuthSessionData) GetUserID() string {
-	return data.UserID
-}
-
-// GetClientID get client ID of the current user session.
-func (data *AuthSessionData) GetClientID() string {
-	return data.ClientID
-}
-
-// Authorize authorize user by verifying cookie or bearer token.
-// if user is authorized, return session data. else, return error.
-func (s *OAuthSession) Authorize(w http.ResponseWriter, r *http.Request) (*AuthSessionData, error) {
-	data, isTokenFromAuthorizationHeader, err := s.getAuthSessionDataFromRequest(r)
-	if err != nil {
-		return nil, err
-	}
-	if data == nil || data.isTokenExpired() {
-		return nil, ErrorInvalidSession
-	}
-
-	isPermissionUpdated, err := s.ensurePermUpdated(data)
-	if err != nil {
-		return nil, err
-	}
-
-	if isTokenFromAuthorizationHeader || isPermissionUpdated {
-		err = s.issueAuthCookie(w, r, data.AuthSessionCookieData)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return data, nil
-}
-
-func (s *OAuthSession) ensurePermUpdated(data *AuthSessionData) (bool, error) {
-	if !data.isPermissionsExpired() {
-		return false, nil
-	}
-
-	permissions, err := s.tokenVerifier.GetPermissionsFunc(data.UserID, data.ClientID, data.Token)
-	if err != nil {
-		return false, err
-	}
-
-	data.Permissions = permissions
-	data.PermissionsExpireAt = time.Now().Add(time.Duration(PermissionExpireTime) * time.Second)
-
-	// Sort the string, as sort.SearchStrings needs sorted []string.
-	sort.Strings(data.Permissions)
-
-	return true, nil
+func (s *OAuthSession) isValidClientID(clientID string) bool {
+	return clientID == s.client.ClientID || s.appIDSet.contain(clientID)
 }
 
 func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*AuthSessionData, bool, error) {
@@ -266,15 +175,15 @@ func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*AuthSess
 		isTokenFromAuthorizationHeader = false
 	}
 
-	userID, clientID, expireAt, extra, err := s.tokenVerifier.IntrospectTokenFunc(accessToken)
+	userID, clientID, expiresAt, extra, err := s.tokenVerifier.IntrospectTokenFunc(r.Context(), accessToken)
 	if err != nil {
-		return nil, false, err
+		return nil, false, WrapError(ErrorStringCannotIntrospectToken, err)
 	}
 
 	// restore token extra data whenever token is new or retrieved from cookie
 	var token *oauth2.Token
 	if isTokenFromAuthorizationHeader {
-		token = makeBearerToken(accessToken, expireAt)
+		token = makeBearerToken(accessToken, expiresAt)
 	} else {
 		token = cookieData.Token
 	}
@@ -298,103 +207,178 @@ func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*AuthSess
 	return data, isTokenFromAuthorizationHeader, nil
 }
 
-/*
-func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*AuthSessionData, bool, error) {
-	var isTokenFromAuthorizationHeader bool
+func (s *OAuthSession) ensurePermUpdated(ctx context.Context, data *AuthSessionData) (bool, error) {
+	if !data.isPermissionsExpired() {
+		return false, nil
+	}
 
-	cookieData := s.retrieveAuthCookie(r)
-	if cookieData == nil || cookieData.isTokenExpired() {
-		userID, clientID, token, err := s.getAndIntrospectBearerToken(r)
+	permissions, err := s.tokenVerifier.GetPermissionsFunc(ctx, data.UserID, data.ClientID, data.Token)
+	if err != nil {
+		return false, WrapError(ErrorStringCannotGetPermission, err)
+	}
+
+	data.Permissions = permissions
+	data.PermissionsExpiresAt = time.Now().Add(time.Duration(PermissionExpireTime) * time.Second)
+
+	// Sort the string, as sort.SearchStrings needs sorted []string.
+	sort.Strings(data.Permissions)
+
+	return true, nil
+}
+
+// Authorize authorize user by verifying cookie or bearer token.
+// if user is authorized, return valid session data. else, return error.
+func (s *OAuthSession) Authorize(w http.ResponseWriter, r *http.Request) (*AuthSessionData, error) {
+	data, isTokenFromAuthorizationHeader, err := s.getAuthSessionDataFromRequest(r)
+	if err != nil {
+		return nil, WrapError(ErrorStringUnauthorized, err)
+	}
+	if data == nil || data.isTokenExpired() {
+		return nil, WrapError(ErrorStringUnauthorized, ErrorInvalidSession)
+	}
+
+	var isPermissionUpdated bool
+	isPermissionUpdated, err = s.ensurePermUpdated(r.Context(), data)
+	if err != nil {
+		return nil, err
+	}
+
+	isCookieDataModified := isTokenFromAuthorizationHeader || isPermissionUpdated
+
+	if isCookieDataModified {
+		err = s.setAuthCookie(w, r, data.AuthSessionCookieData)
 		if err != nil {
-			return nil, false, err
+			return nil, WrapError(ErrorStringUnableToSetCookie, err)
 		}
-
-		cookieData = newAuthSessionCookieData(userID, clientID, token)
-
-		isTokenFromAuthorizationHeader = true
-	} else {
-		isTokenFromAuthorizationHeader = false
 	}
 
-	data := &AuthSessionData{
-		AuthSessionCookieData: cookieData,
-	}
-
-	if !s.isValidClientID(data.ClientID) {
-		return nil, false, ErrorInvalidClientID
-	}
-
-	return data, isTokenFromAuthorizationHeader, nil
+	return data, nil
 }
 
-func (s *OAuthSession) getAndIntrospectBearerToken(r *http.Request) (userID string, clientID string, token *oauth2.Token, err error) {
-	var bearerToken string
-	bearerToken, err = s.getBearerToken(r)
-	if err != nil {
-		return
+// SecuredF is a http middleware for http.HandlerFunc to check if the current user has logged in.
+func (s *OAuthSession) SecuredF(isAPI bool) func(http.HandlerFunc) http.HandlerFunc {
+	return func(h http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			sessionData, err := s.Authorize(w, r)
+			if err != nil {
+				switch {
+				case CompareErrorMessage(err, ErrorStringUnauthorized):
+					if isAPI {
+						http.Error(w, err.Error(), 401)
+					} else {
+						err = s.StartOAuth(w, r)
+						if err != nil {
+							http.Error(w, err.Error(), 500)
+						}
+					}
+				case CompareErrorMessage(err, ErrorStringCannotGetPermission):
+					http.Error(w, err.Error(), 403)
+				default:
+					http.Error(w, err.Error(), 500)
+				}
+			} else {
+				requestInner := AttachRequestWithSessionData(r, sessionData)
+				h(w, requestInner)
+			}
+		}
 	}
-
-	var expireAt int64
-	var extra map[string]interface{}
-	userID, clientID, expireAt, extra, err = s.tokenVerifier.IntrospectTokenFunc(bearerToken)
-	if err != nil {
-		return
-	}
-
-	token = makeBearerToken(bearerToken, expireAt).WithExtra(extra)
-	return
 }
-*/
 
-func (s *OAuthSession) isValidClientID(clientID string) bool {
-	return clientID == s.client.ClientID || s.appIDSet.contain(clientID)
+// SecuredH is a http middleware for http.Handler to check if the current user has logged in.
+func (s *OAuthSession) SecuredH(isAPI bool) func(http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		return http.Handler(s.SecuredF(isAPI)(h.ServeHTTP))
+	}
 }
 
 // StartOAuth redirect to endpoint of OAuth service provider for OAuth flow.
-func (s *OAuthSession) StartOAuth(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, s.client.AuthCodeURL(r.RequestURI), 303)
+func (s *OAuthSession) StartOAuth(w http.ResponseWriter, r *http.Request) error {
+	state, err := s.stateHandler.Generate(s.cookieStore, w, r)
+	if err != nil {
+		return err
+	}
+
+	http.Redirect(w, r, s.client.AuthCodeURL(state), 303)
+	return nil
 }
 
-// CallbackView is a http handler for the authentication redirection of the
-// auth server.
+// EndOAuth finish OAuth flow.
+// it will verify state, exchange from authorization code to token, set cookie to make user logged in.
+func (s *OAuthSession) EndOAuth(w http.ResponseWriter, r *http.Request) (string, error) {
+	code := r.FormValue("code")
+	state := r.FormValue("state")
+
+	continueURI, err := s.stateHandler.Verify(s.cookieStore, w, r, state)
+	if err != nil {
+		return "", WrapError(ErrorStringInvalidState, err)
+	}
+
+	var token *oauth2.Token
+	token, err = s.client.Exchange(r.Context(), code)
+	if err != nil {
+		return "", WrapError(ErrorStringFailedToExchangeAuthorizationCode, err)
+	}
+
+	// OAuth flow is already completed, error after that should not relate to OAuth flow
+
+	err = s.setAuthCookie(w, r, newAuthSessionCookieData(token))
+	if err != nil {
+		return "", WrapError(ErrorStringUnableToSetCookie, err)
+	}
+
+	return continueURI, nil
+}
+
+// CallbackView is a http handler for the authentication redirection of the auth server.
 func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	code := q.Get("code")
-	cont := q.Get("state")
-
-	token, err := s.client.Exchange(oauth2.NoContext, code)
+	continueURI, err := s.EndOAuth(w, r)
 	if err != nil {
-		http.Error(w, err.Error(), 400)
-		return
+		var statusCode int
+		switch {
+		case CompareErrorMessage(err, ErrorStringInvalidState):
+			fallthrough
+		case CompareErrorMessage(err, ErrorStringFailedToExchangeAuthorizationCode):
+			statusCode = 400
+		default:
+			statusCode = 500
+		}
+		http.Error(w, err.Error(), statusCode)
+	} else {
+		http.Redirect(w, r, continueURI, 303)
 	}
-
-	// TODO: how to get subject (account ID) when using exchange code only?
-	/*userID, clientID, _, _, err := s.tokenVerifier.IntrospectTokenFunc(token.AccessToken)
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}*/
-
-	//err = s.issueAuthCookie(w, r, newAuthSessionCookieData(userID, clientID, token))
-	err = s.issueAuthCookie(w, r, newAuthSessionCookieData(token))
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
-
-	http.Redirect(w, r, cont, 303)
 }
 
-func makeToken(tokenType string, accessToken string, expireAt int64) *oauth2.Token {
+// ClearSession clear session.
+func (s *OAuthSession) ClearSession(w http.ResponseWriter, r *http.Request) error {
+	err := s.deleteAuthCookie(w, r)
+	if err != nil {
+		err = WrapError(ErrorStringUnableToSetCookie, err)
+	}
+	return err
+}
+
+// LogOut is a http handler to log out the user.
+func (s *OAuthSession) LogOut(redirect string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		err := s.ClearSession(w, r)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+		} else {
+			http.Redirect(w, r, redirect, 303)
+		}
+	}
+}
+
+func makeToken(tokenType string, accessToken string, expiresAt int64) *oauth2.Token {
 	return &oauth2.Token{
 		AccessToken: accessToken,
 		TokenType:   tokenType,
-		Expiry:      time.Unix(expireAt, 0),
+		Expiry:      time.Unix(expiresAt, 0),
 	}
 }
 
-func makeBearerToken(accessToken string, expireAt int64) *oauth2.Token {
-	return makeToken("Bearer", accessToken, expireAt)
+func makeBearerToken(accessToken string, expiresAt int64) *oauth2.Token {
+	return makeToken("Bearer", accessToken, expiresAt)
 }
 
 func (s *OAuthSession) getBearerToken(r *http.Request) (string, error) {
@@ -402,12 +386,12 @@ func (s *OAuthSession) getBearerToken(r *http.Request) (string, error) {
 
 	authorizationData := strings.SplitN(authorizationHeaderValue, " ", 2)
 	if len(authorizationData) != 2 {
-		return "", ErrorInvalidAuthorizationHeaderFormat
+		return "", ErrorInvalidAuthorizationSyntax
 	}
 
 	tokenType := authorizationData[0]
 	if !strings.EqualFold(tokenType, "bearer") {
-		return "", ErrorUnsupportedAuthorizationType
+		return "", ErrorUnsupportedAuthorizationScheme
 	}
 
 	bearerToken := authorizationData[1]
@@ -420,7 +404,7 @@ func (s *OAuthSession) retrieveAuthCookie(r *http.Request) *AuthSessionCookieDat
 		return nil
 	}
 
-	v, found := session.Values["data"]
+	v, found := session.Values["auth"]
 	if !found {
 		return nil
 	}
@@ -433,32 +417,34 @@ func (s *OAuthSession) retrieveAuthCookie(r *http.Request) *AuthSessionCookieDat
 	return cookieData
 }
 
-func (s *OAuthSession) issueAuthCookie(w http.ResponseWriter, r *http.Request, cookieData *AuthSessionCookieData) error {
+func (s *OAuthSession) setAuthCookie(w http.ResponseWriter, r *http.Request, cookieData *AuthSessionCookieData) error {
 	session, err := s.cookieStore.New(r, s.name)
 	if err != nil {
 		return err
 	}
-	session.Values["data"] = cookieData
+	session.Values["auth"] = cookieData
 	err = session.Save(r, w)
 	return err
 }
 
-func (s *OAuthSession) expireAuthCookie(w http.ResponseWriter, r *http.Request) {
+func (s *OAuthSession) deleteAuthCookie(w http.ResponseWriter, r *http.Request) error {
 	session, err := s.cookieStore.Get(r, s.name)
 	if err != nil {
-		panic(err)
+		return err
 	}
-	delete(session.Values, "data")
+	delete(session.Values, "auth")
 	session.Options.MaxAge = -1
-	session.Save(r, w)
+	err = session.Save(r, w)
+	return err
 }
 
 func newCookieStore(conf *CookieConfig) *sessions.CookieStore {
-	var signingKey, encryptionKey []byte
-	var err error
+	var authenticationKey, encryptionKey []byte
 
 	if conf != nil {
-		signingKey, err = base64.StdEncoding.DecodeString(conf.SigningKey)
+		var err error
+
+		authenticationKey, err = base64.StdEncoding.DecodeString(conf.AuthenticationKey)
 		if err != nil {
 			panic(err)
 		}
@@ -468,9 +454,9 @@ func newCookieStore(conf *CookieConfig) *sessions.CookieStore {
 			panic(err)
 		}
 	} else {
-		signingKey = securecookie.GenerateRandomKey(64)
+		authenticationKey = securecookie.GenerateRandomKey(64)
 		encryptionKey = securecookie.GenerateRandomKey(32)
 	}
 
-	return sessions.NewCookieStore(signingKey, encryptionKey)
+	return sessions.NewCookieStore(authenticationKey, encryptionKey)
 }

@@ -1,9 +1,9 @@
-// Package osecure provides simple login service based on OAuth client.
+// Package osecure/contrib provides plugins for simple login service based on OAuth client.
 package contrib
 
 import (
+	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"github.com/rayark/osecure/v3"
+	"github.com/rayark/osecure/v4"
 )
 
 // predefined implementation
@@ -24,11 +24,12 @@ const (
 // predefined token introspection func
 
 func GoogleIntrospection() osecure.IntrospectTokenFunc {
-	return func(accessToken string) (userID string, clientID string, expireAt int64, extra map[string]interface{}, err error) {
+	return func(ctx context.Context, accessToken string) (userID string, clientID string, expiresAt int64, extra map[string]interface{}, err error) {
 		req, err := http.NewRequest(http.MethodGet, TokenEndpointURL, nil)
 		if err != nil {
 			return
 		}
+		req = req.WithContext(ctx)
 
 		query := req.URL.Query()
 		query.Add("access_token", accessToken)
@@ -42,22 +43,28 @@ func GoogleIntrospection() osecure.IntrospectTokenFunc {
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			var respData []byte
-			respData, err = ioutil.ReadAll(resp.Body)
+			var errorResult struct {
+				ErrorDescription string `json:"error_description"`
+			}
+
+			err = json.NewDecoder(resp.Body).Decode(&errorResult)
 			if err != nil {
 				return
 			}
 
-			err = errors.New(fmt.Sprintf("cannot introspect token: introspection API error:\nstatus code: %d\n%s", resp.StatusCode, string(respData)))
+			err = fmt.Errorf("Google API error: status code: %d, description: %s", resp.StatusCode, errorResult.ErrorDescription)
 			return
 		}
 
 		var result struct {
 			Subject         string `json:"sub"`
 			Audience        string `json:"aud"`
-			ExpireAt        int64  `json:"exp,string"`
+			AuthorizedParty string `json:"azp"`
+			ExpiresAt       int64  `json:"exp,string"`
+			ExpiresIn       int64  `json:"expires_in,string"`
 			EMail           string `json:"email"`
 			IsEMailVerified bool   `json:"email_verified,string"`
+			AccessType      string `json:"access_type"`
 		}
 
 		err = json.NewDecoder(resp.Body).Decode(&result)
@@ -71,21 +78,25 @@ func GoogleIntrospection() osecure.IntrospectTokenFunc {
 			aliases = []string{result.EMail}
 		}
 		extraData["aliases"] = aliases
+		extraData["azp"] = result.AuthorizedParty
+		extraData["expires_in"] = result.ExpiresIn
+		extraData["access_type"] = result.AccessType
 
 		userID = result.Subject
 		clientID = result.Audience
-		expireAt = result.ExpireAt
+		expiresAt = result.ExpiresAt
 		extra = extraData
 		return
 	}
 }
 
 func SentryIntrospection(tokenInfoURL string) osecure.IntrospectTokenFunc {
-	return func(accessToken string) (userID string, clientID string, expireAt int64, extra map[string]interface{}, err error) {
+	return func(ctx context.Context, accessToken string) (userID string, clientID string, expiresAt int64, extra map[string]interface{}, err error) {
 		req, err := http.NewRequest(http.MethodPost, tokenInfoURL, nil)
 		if err != nil {
 			return
 		}
+		req = req.WithContext(ctx)
 
 		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", accessToken))
 
@@ -103,7 +114,7 @@ func SentryIntrospection(tokenInfoURL string) osecure.IntrospectTokenFunc {
 				return
 			}
 
-			err = errors.New(fmt.Sprintf("cannot introspect token: introspection API error:\nstatus code: %d\n%s", resp.StatusCode, string(respData)))
+			err = fmt.Errorf("Sentry API error: status code: %d, body:\n%s", resp.StatusCode, string(respData))
 			return
 		}
 
@@ -124,10 +135,11 @@ func SentryIntrospection(tokenInfoURL string) osecure.IntrospectTokenFunc {
 
 		extraData := make(map[string]interface{})
 		extraData["user_id"] = result.UserID
+		extraData["expires_in"] = result.ExpiresIn
 
 		userID = result.Username
 		clientID = result.ClientID
-		expireAt = time.Now().Unix() + result.ExpiresIn
+		expiresAt = time.Now().Unix() + result.ExpiresIn
 		extra = extraData
 		return
 	}
@@ -141,26 +153,24 @@ func CommonPermissionRoles(roles []string) osecure.GetPermissionsFunc {
 	internalRoles := make([]string, len(roles))
 	copy(internalRoles, roles)
 
-	return func(userID string, clientID string, token *oauth2.Token) (permissions []string, err error) {
+	return func(ctx context.Context, userID string, clientID string, token *oauth2.Token) (permissions []string, err error) {
 		return internalRoles, nil
 	}
 
 }
 
 // predefined permission roles (a table to represent how to grant everyone's access)
-func PredefinedPermissionRoles(roleUsersMap map[string][]string) osecure.GetPermissionsFunc {
-	userRolesMap := make(map[string][]string)
-	for role, userIDList := range roleUsersMap {
-		for _, userID := range userIDList {
-			userRolesMap[userID] = append(userRolesMap[userID], role)
-		}
+func PredefinedPermissionRoles(userRolesMap map[string][]string) osecure.GetPermissionsFunc {
+	//prevent from mutable user roles map
+	internalUserRolesMap := make(map[string][]string)
+	for userID, roles := range userRolesMap {
+		internalRoles := make([]string, len(roles))
+		copy(internalRoles, roles)
+		internalUserRolesMap[userID] = internalRoles
 	}
 
-	return func(userID string, clientID string, token *oauth2.Token) (permissions []string, err error) {
-		roles, ok := userRolesMap[userID]
-		if !ok {
-			return nil, osecure.ErrorInvalidUserID
-		}
+	return func(ctx context.Context, userID string, clientID string, token *oauth2.Token) (permissions []string, err error) {
+		roles := internalUserRolesMap[userID]
 		return roles, nil
 	}
 
@@ -168,8 +178,8 @@ func PredefinedPermissionRoles(roleUsersMap map[string][]string) osecure.GetPerm
 
 // sentry permission
 func SentryPermission(permissionsURL string) osecure.GetPermissionsFunc {
-	return func(userID string, clientID string, token *oauth2.Token) (permissions []string, err error) {
-		client := oauth2.NewClient(oauth2.NoContext, oauth2.StaticTokenSource(token))
+	return func(ctx context.Context, userID string, clientID string, token *oauth2.Token) (permissions []string, err error) {
+		client := oauth2.NewClient(ctx, oauth2.StaticTokenSource(token))
 
 		//resp, err := client.PostForm(permissionsURL, url.Values{})
 		resp, err := client.Get(permissionsURL)
@@ -185,7 +195,7 @@ func SentryPermission(permissionsURL string) osecure.GetPermissionsFunc {
 				return
 			}
 
-			err = errors.New(fmt.Sprintf("cannot get permission: permission API error:\nstatus code: %d\n%s", resp.StatusCode, string(respData)))
+			err = fmt.Errorf("Sentry API error: status code: %d, body:\n%s", resp.StatusCode, string(respData))
 			return
 		}
 
