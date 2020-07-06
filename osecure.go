@@ -7,7 +7,6 @@ import (
 	"encoding/gob"
 	"golang.org/x/oauth2"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
@@ -32,7 +31,7 @@ func init() {
 
 type AuthSessionCookieData struct {
 	Token                *oauth2.Token
-	Permissions          []string
+	Permissions          StringSet
 	PermissionsExpiresAt time.Time
 }
 
@@ -42,7 +41,7 @@ func newAuthSessionCookieData(token *oauth2.Token) *AuthSessionCookieData {
 	}
 	return &AuthSessionCookieData{
 		Token:                token,
-		Permissions:          []string{},
+		Permissions:          NewStringSet(nil),
 		PermissionsExpiresAt: time.Time{}, // Zero time
 	}
 }
@@ -57,17 +56,12 @@ func (cookieData *AuthSessionCookieData) isPermissionsExpired() bool {
 
 // GetPermissions lists the permissions of the current user and client.
 func (cookieData *AuthSessionCookieData) GetPermissions() []string {
-	return cookieData.Permissions
+	return cookieData.Permissions.List()
 }
 
 // HasPermission checks if the current user has such permission.
 func (cookieData *AuthSessionCookieData) HasPermission(permission string) bool {
-	perms := cookieData.GetPermissions()
-
-	id := sort.SearchStrings(perms, permission)
-	result := id < len(perms) && perms[id] == permission
-
-	return result
+	return cookieData.Permissions.Contain(permission)
 }
 
 type AuthSessionData struct {
@@ -120,7 +114,7 @@ type OAuthSession struct {
 	name          string
 	cookieStore   *sessions.CookieStore
 	client        *oauth2.Config
-	appIDSet      set
+	appIDSet      StringSet
 	tokenVerifier *TokenVerifier
 	stateHandler  StateHandler
 }
@@ -138,23 +132,18 @@ func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConf
 		RedirectURL: callbackURL,
 	}
 
-	appIDSet := make(set)
-	for _, appID := range oauthConf.AppIDList {
-		appIDSet.add(appID)
-	}
-
 	return &OAuthSession{
 		name:          name,
 		cookieStore:   newCookieStore(cookieConf),
 		client:        client,
-		appIDSet:      appIDSet,
+		appIDSet:      NewStringSet(oauthConf.AppIDList),
 		tokenVerifier: tokenVerifier,
 		stateHandler:  stateHandler,
 	}
 }
 
 func (s *OAuthSession) isValidClientID(clientID string) bool {
-	return clientID == s.client.ClientID || s.appIDSet.contain(clientID)
+	return clientID == s.client.ClientID || s.appIDSet.Contain(clientID)
 }
 
 func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*AuthSessionData, bool, error) {
@@ -217,11 +206,8 @@ func (s *OAuthSession) ensurePermUpdated(ctx context.Context, data *AuthSessionD
 		return false, WrapError(ErrorStringCannotGetPermission, err)
 	}
 
-	data.Permissions = permissions
+	data.Permissions = NewStringSet(permissions)
 	data.PermissionsExpiresAt = time.Now().Add(time.Duration(PermissionExpireTime) * time.Second)
-
-	// Sort the string, as sort.SearchStrings needs sorted []string.
-	sort.Strings(data.Permissions)
 
 	return true, nil
 }
