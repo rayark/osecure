@@ -70,7 +70,7 @@ func (is *InterServer) GetServerToken(targetClientID string) (*ServerTokenReply,
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == 403 {
+	if resp.StatusCode == http.StatusForbidden {
 		return nil, ErrorPermissionDenied
 	}
 

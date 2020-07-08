@@ -250,17 +250,17 @@ func (s *OAuthSession) SecuredF(isAPI bool) func(http.HandlerFunc) http.HandlerF
 				switch {
 				case CompareErrorMessage(err, ErrorStringUnauthorized):
 					if isAPI {
-						http.Error(w, err.Error(), 401)
+						http.Error(w, err.Error(), http.StatusUnauthorized)
 					} else {
 						err = s.StartOAuth(w, r)
 						if err != nil {
-							http.Error(w, err.Error(), 500)
+							http.Error(w, err.Error(), http.StatusInternalServerError)
 						}
 					}
 				case CompareErrorMessage(err, ErrorStringCannotGetPermission):
-					http.Error(w, err.Error(), 403)
+					http.Error(w, err.Error(), http.StatusForbidden)
 				default:
-					http.Error(w, err.Error(), 500)
+					http.Error(w, err.Error(), http.StatusInternalServerError)
 				}
 			} else {
 				requestInner := AttachRequestWithSessionData(r, sessionData)
@@ -284,7 +284,7 @@ func (s *OAuthSession) StartOAuth(w http.ResponseWriter, r *http.Request) error 
 		return err
 	}
 
-	http.Redirect(w, r, s.client.AuthCodeURL(state), 303)
+	http.Redirect(w, r, s.client.AuthCodeURL(state), http.StatusSeeOther)
 	return nil
 }
 
@@ -324,13 +324,13 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 		case CompareErrorMessage(err, ErrorStringInvalidState):
 			fallthrough
 		case CompareErrorMessage(err, ErrorStringFailedToExchangeAuthorizationCode):
-			statusCode = 400
+			statusCode = http.StatusBadRequest
 		default:
-			statusCode = 500
+			statusCode = http.StatusInternalServerError
 		}
 		http.Error(w, err.Error(), statusCode)
 	} else {
-		http.Redirect(w, r, continueURI, 303)
+		http.Redirect(w, r, continueURI, http.StatusSeeOther)
 	}
 }
 
@@ -348,9 +348,9 @@ func (s *OAuthSession) LogOut(redirect string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		err := s.ClearSession(w, r)
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 		} else {
-			http.Redirect(w, r, redirect, 303)
+			http.Redirect(w, r, redirect, http.StatusSeeOther)
 		}
 	}
 }
