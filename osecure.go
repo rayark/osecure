@@ -344,7 +344,7 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		qry.Add("error", err.Error())
 	}
-	uri.Fragment = "?" + qry.Encode()
+	uri.Fragment += "?" + qry.Encode()
 	http.Redirect(w, r, uri.String(), http.StatusSeeOther)
 }
 
