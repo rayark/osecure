@@ -325,12 +325,12 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 			statusCode = http.StatusInternalServerError
 		}
 	} else {
-		cookie := newAuthSessionCookieData(token)
-		_, err = s.ensurePermUpdated(r.Context(), &AuthSessionData{AuthSessionCookieData: cookie})
+		_, err := s.tokenVerifier.GetPermissionsFunc(r.Context(), "", "", token)
 		if err != nil {
 			statusCode = http.StatusBadRequest
 			err = WrapError(ErrorStringCannotGetPermission, err)
 		} else {
+			cookie := newAuthSessionCookieData(token)
 			err = s.setAuthCookie(w, r, cookie)
 			if err != nil {
 				statusCode = http.StatusInternalServerError
