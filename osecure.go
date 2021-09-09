@@ -5,10 +5,13 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/gob"
-	"golang.org/x/oauth2"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/oauth2"
 
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
@@ -290,36 +293,29 @@ func (s *OAuthSession) StartOAuth(w http.ResponseWriter, r *http.Request) error 
 
 // EndOAuth finish OAuth flow.
 // it will verify state, exchange from authorization code to token, set cookie to make user logged in.
-func (s *OAuthSession) EndOAuth(w http.ResponseWriter, r *http.Request) (string, error) {
+func (s *OAuthSession) EndOAuth(w http.ResponseWriter, r *http.Request) (string, *oauth2.Token, error) {
 	code := r.FormValue("code")
 	state := r.FormValue("state")
 
 	continueURI, err := s.stateHandler.Verify(s.cookieStore, w, r, state)
 	if err != nil {
-		return "", WrapError(ErrorStringInvalidState, err)
+		return "", nil, WrapError(ErrorStringInvalidState, err)
 	}
 
 	var token *oauth2.Token
 	token, err = s.client.Exchange(r.Context(), code)
 	if err != nil {
-		return "", WrapError(ErrorStringFailedToExchangeAuthorizationCode, err)
+		return "", nil, WrapError(ErrorStringFailedToExchangeAuthorizationCode, err)
 	}
 
-	// OAuth flow is already completed, error after that should not relate to OAuth flow
-
-	err = s.setAuthCookie(w, r, newAuthSessionCookieData(token))
-	if err != nil {
-		return "", WrapError(ErrorStringUnableToSetCookie, err)
-	}
-
-	return continueURI, nil
+	return continueURI, token, nil
 }
 
 // CallbackView is a http handler for the authentication redirection of the auth server.
 func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
-	continueURI, err := s.EndOAuth(w, r)
+	continueURI, token, err := s.EndOAuth(w, r)
+	statusCode := http.StatusOK
 	if err != nil {
-		var statusCode int
 		switch {
 		case CompareErrorMessage(err, ErrorStringInvalidState):
 			fallthrough
@@ -328,10 +324,28 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 		default:
 			statusCode = http.StatusInternalServerError
 		}
-		http.Error(w, err.Error(), statusCode)
 	} else {
-		http.Redirect(w, r, continueURI, http.StatusSeeOther)
+		_, err := s.tokenVerifier.GetPermissionsFunc(r.Context(), "", "", token)
+		if err != nil {
+			statusCode = http.StatusBadRequest
+			err = WrapError(ErrorStringCannotGetPermission, err)
+		} else {
+			cookie := newAuthSessionCookieData(token)
+			err = s.setAuthCookie(w, r, cookie)
+			if err != nil {
+				statusCode = http.StatusInternalServerError
+				err = WrapError(ErrorStringUnableToSetCookie, err)
+			}
+		}
 	}
+	uri, _ := url.Parse(continueURI)
+	qry := uri.Query()
+	qry.Add("status", strconv.Itoa(statusCode))
+	if err != nil {
+		qry.Add("error", err.Error())
+	}
+	uri.Fragment += "?" + qry.Encode()
+	http.Redirect(w, r, uri.String(), http.StatusSeeOther)
 }
 
 // ClearSession clear session.
