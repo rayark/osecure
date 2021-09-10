@@ -2,11 +2,12 @@ package main
 
 import (
 	"fmt"
+
 	"github.com/julienschmidt/httprouter"
-	"github.com/rayark/osecure/v4"
-	osecure_contrib "github.com/rayark/osecure/v4/contrib"
-	"github.com/rayark/osecure/v4/inter_server"
-	"github.com/rayark/osecure/v4/state_handler"
+	"github.com/rayark/osecure/v5"
+	osecure_contrib "github.com/rayark/osecure/v5/contrib"
+	"github.com/rayark/osecure/v5/inter_server"
+	"github.com/rayark/osecure/v5/state_handler"
 	"github.com/rayark/zin"
 	"github.com/rayark/zin/middleware"
 	"log"
