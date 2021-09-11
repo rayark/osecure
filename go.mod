@@ -1,4 +1,4 @@
-module github.com/rayark/osecure/v4
+module github.com/rayark/osecure/v5
 
 go 1.13
 

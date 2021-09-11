@@ -8,11 +8,12 @@ import (
 	"io/ioutil"
 	"net/http"
 	"time"
+
 	//"net/url"
 
 	"golang.org/x/oauth2"
 
-	"github.com/rayark/osecure/v4"
+	"github.com/rayark/osecure/v5"
 )
 
 // predefined implementation
