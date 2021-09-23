@@ -313,6 +313,7 @@ func (s *OAuthSession) EndOAuth(w http.ResponseWriter, r *http.Request) (string,
 
 // CallbackView is a http handler for the authentication redirection of the auth server.
 func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
+	var err error
 	continueURI, token, err := s.EndOAuth(w, r)
 	statusCode := http.StatusOK
 	if err != nil {
@@ -325,7 +326,7 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 			statusCode = http.StatusInternalServerError
 		}
 	} else {
-		_, err := s.tokenVerifier.GetPermissionsFunc(r.Context(), "", "", token)
+		_, err = s.tokenVerifier.GetPermissionsFunc(r.Context(), "", "", token)
 		if err != nil {
 			statusCode = http.StatusBadRequest
 			err = WrapError(ErrorStringCannotGetPermission, err)
