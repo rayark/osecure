@@ -311,32 +311,35 @@ func (s *OAuthSession) EndOAuth(w http.ResponseWriter, r *http.Request) (string,
 	return continueURI, token, nil
 }
 
+func (s *OAuthSession) verifyAndSaveToken(w http.ResponseWriter, r *http.Request, token *oauth2.Token) error {
+	_, err := s.tokenVerifier.GetPermissionsFunc(r.Context(), "", "", token)
+	if err != nil {
+		return WrapError(ErrorStringCannotGetPermission, err)
+	}
+	cookie := newAuthSessionCookieData(token)
+	err = s.setAuthCookie(w, r, cookie)
+	if err != nil {
+		return WrapError(ErrorStringUnableToSetCookie, err)
+	}
+	return nil
+}
+
 // CallbackView is a http handler for the authentication redirection of the auth server.
 func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
-	var err error
 	continueURI, token, err := s.EndOAuth(w, r)
 	statusCode := http.StatusOK
+	if err == nil {
+		err = s.verifyAndSaveToken(w, r, token)
+	}
 	if err != nil {
 		switch {
 		case CompareErrorMessage(err, ErrorStringInvalidState):
 			fallthrough
-		case CompareErrorMessage(err, ErrorStringFailedToExchangeAuthorizationCode):
+		case CompareErrorMessage(err, ErrorStringFailedToExchangeAuthorizationCode),
+			CompareErrorMessage(err, ErrorStringCannotGetPermission):
 			statusCode = http.StatusBadRequest
 		default:
 			statusCode = http.StatusInternalServerError
-		}
-	} else {
-		_, err = s.tokenVerifier.GetPermissionsFunc(r.Context(), "", "", token)
-		if err != nil {
-			statusCode = http.StatusBadRequest
-			err = WrapError(ErrorStringCannotGetPermission, err)
-		} else {
-			cookie := newAuthSessionCookieData(token)
-			err = s.setAuthCookie(w, r, cookie)
-			if err != nil {
-				statusCode = http.StatusInternalServerError
-				err = WrapError(ErrorStringUnableToSetCookie, err)
-			}
 		}
 	}
 	uri, _ := url.Parse(continueURI)
