@@ -3,6 +3,9 @@ package main
 import (
 	"fmt"
 
+	"log"
+	"net/http"
+
 	"github.com/julienschmidt/httprouter"
 	"github.com/rayark/osecure/v5"
 	osecure_contrib "github.com/rayark/osecure/v5/contrib"
@@ -10,8 +13,6 @@ import (
 	"github.com/rayark/osecure/v5/state_handler"
 	"github.com/rayark/zin"
 	"github.com/rayark/zin/middleware"
-	"log"
-	"net/http"
 )
 
 const (
@@ -102,8 +103,6 @@ func main() {
 				ClientID:     "57063c36f32193000195a9f3.sentry.rayark.com",
 				ClientSecret: "nEmLGx5gXgn2-30HZ0GRTjct1GE2jOKnK7V_yaijUPpKCiEiUPbxqkL0i0-zEpm-",
 				Scopes:       []string{"openid", "profile", "email"},
-				AuthURL:      "http://localhost:8000/auth",
-				TokenURL:     "http://localhost:8000/token",
 				AppIDList:    []string{},
 			},
 			//&osecure.TokenVerifier{IntrospectTokenFunc: osecure_contrib.GoogleIntrospection(), GetPermissionsFunc: osecure_contrib.CommonPermissionRoles([]string{"user", "cat"})},
