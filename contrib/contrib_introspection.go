@@ -1,4 +1,4 @@
-// Package osecure/contrib provides plugins for simple login service based on OAuth client.
+// Package contrib provides plugins for simple login service based on OAuth client.
 package contrib
 
 import (
@@ -18,15 +18,21 @@ import (
 
 // predefined implementation
 
-const (
-	TokenEndpointURL = "https://www.googleapis.com/oauth2/v3/tokeninfo"
-)
+// GoogleOauth2Endpoint is Google's OAuth 2.0 default endpoint.
+var GoogleOauth2Endpoint = oauth2.Endpoint{
+	AuthURL:  "https://accounts.google.com/o/oauth2/v2/auth",
+	TokenURL: "https://oauth2.googleapis.com/token",
+}
+
+// GoogleTokenInfoEndpointURL is Google's get token info endpoint url
+const GoogleTokenInfoEndpointURL = "https://www.googleapis.com/oauth2/v3/tokeninfo"
 
 // predefined token introspection func
 
+// GoogleIntrospection define the introspection function with google access token
 func GoogleIntrospection() osecure.IntrospectTokenFunc {
 	return func(ctx context.Context, accessToken string) (userID string, clientID string, expiresAt int64, extra map[string]interface{}, err error) {
-		req, err := http.NewRequest(http.MethodGet, TokenEndpointURL, nil)
+		req, err := http.NewRequest(http.MethodGet, GoogleTokenInfoEndpointURL, nil)
 		if err != nil {
 			return
 		}
@@ -148,7 +154,7 @@ func SentryIntrospection(tokenInfoURL string) osecure.IntrospectTokenFunc {
 
 // predefined permission getter func
 
-// everyone is granted in the same way
+// CommonPermissionRoles granted permission with everyone in the same way
 func CommonPermissionRoles(roles []string) osecure.GetPermissionsFunc {
 	//prevent from mutable roles
 	internalRoles := make([]string, len(roles))
@@ -160,7 +166,7 @@ func CommonPermissionRoles(roles []string) osecure.GetPermissionsFunc {
 
 }
 
-// predefined permission roles (a table to represent how to grant everyone's access)
+// PredefinedPermissionRoles is a table to represent how to grant everyone's access
 func PredefinedPermissionRoles(userRolesMap map[string][]string) osecure.GetPermissionsFunc {
 	//prevent from mutable user roles map
 	internalUserRolesMap := make(map[string][]string)
