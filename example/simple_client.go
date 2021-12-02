@@ -103,7 +103,6 @@ func main() {
 				ClientID:     "57063c36f32193000195a9f3.sentry.rayark.com",
 				ClientSecret: "nEmLGx5gXgn2-30HZ0GRTjct1GE2jOKnK7V_yaijUPpKCiEiUPbxqkL0i0-zEpm-",
 				Scopes:       []string{"openid", "profile", "email"},
-				AppIDList:    []string{},
 			},
 			//&osecure.TokenVerifier{IntrospectTokenFunc: osecure_contrib.GoogleIntrospection(), GetPermissionsFunc: osecure_contrib.CommonPermissionRoles([]string{"user", "cat"})},
 			&osecure.TokenVerifier{IntrospectTokenFunc: osecure_contrib.GoogleIntrospection(), GetPermissionsFunc: osecure_contrib.PredefinedPermissionRoles(map[string][]string{"123456789012345678901": {"user", "cat"}})},
