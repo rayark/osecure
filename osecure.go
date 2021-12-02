@@ -95,12 +95,6 @@ func AttachRequestWithSessionData(r *http.Request, sessionData *AuthSessionData)
 	return r.WithContext(contextWithSessionData)
 }
 
-// GoogleOauth2Endpoint is Google's OAuth 2.0 default endpoint.
-var GoogleOauth2Endpoint = oauth2.Endpoint{
-	AuthURL:  "https://accounts.google.com/o/oauth2/v2/auth",
-	TokenURL: "https://oauth2.googleapis.com/token",
-}
-
 // CookieConfig is a config of github.com/gorilla/securecookie.
 // Recommended configurations are base64 of 64 bytes key for AuthenticationKey,
 // and base64 of 32 bytes key for EncryptionKey.
@@ -127,12 +121,12 @@ type OAuthSession struct {
 }
 
 // NewOAuthSession creates osecure session.
-func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConfig, tokenVerifier *TokenVerifier, callbackURL string, stateHandler StateHandler) *OAuthSession {
+func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConfig, endpoint oauth2.Endpoint, tokenVerifier *TokenVerifier, callbackURL string, stateHandler StateHandler) *OAuthSession {
 	client := &oauth2.Config{
 		ClientID:     oauthConf.ClientID,
 		ClientSecret: oauthConf.ClientSecret,
 		Scopes:       oauthConf.Scopes,
-		Endpoint:     GoogleOauth2Endpoint,
+		Endpoint:     endpoint,
 		RedirectURL:  callbackURL,
 	}
 
