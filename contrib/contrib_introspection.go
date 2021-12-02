@@ -5,15 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
-	"time"
-
-	//"net/url"
-
-	"golang.org/x/oauth2"
 
 	"github.com/rayark/osecure/v5"
+	"golang.org/x/oauth2"
 )
 
 // predefined implementation
@@ -91,61 +86,6 @@ func GoogleIntrospection() osecure.IntrospectTokenFunc {
 	}
 }
 
-func SentryIntrospection(tokenInfoURL string) osecure.IntrospectTokenFunc {
-	return func(ctx context.Context, accessToken string) (userID string, clientID string, expiresAt int64, extra map[string]interface{}, err error) {
-		req, err := http.NewRequest(http.MethodPost, tokenInfoURL, nil)
-		if err != nil {
-			return
-		}
-		req = req.WithContext(ctx)
-
-		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", accessToken))
-
-		client := &http.Client{}
-		resp, err := client.Do(req)
-		if err != nil {
-			return
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			var respData []byte
-			respData, err = ioutil.ReadAll(resp.Body)
-			if err != nil {
-				return
-			}
-
-			err = fmt.Errorf("Sentry API error: status code: %d, body:\n%s", resp.StatusCode, string(respData))
-			return
-		}
-
-		var result struct {
-			AccessToken  string `json:"access_token"`
-			TokenType    string `json:"token_type"`
-			RefreshToken string `json:"refresh_token"`
-			ExpiresIn    int64  `json:"expires_in"`
-			Username     string `json:"username"`
-			UserID       string `json:"user_id"`
-			ClientID     string `json:"client_id"`
-		}
-
-		err = json.NewDecoder(resp.Body).Decode(&result)
-		if err != nil {
-			return
-		}
-
-		extraData := make(map[string]interface{})
-		extraData["user_id"] = result.UserID
-		extraData["expires_in"] = result.ExpiresIn
-
-		userID = result.Username
-		clientID = result.ClientID
-		expiresAt = time.Now().Unix() + result.ExpiresIn
-		extra = extraData
-		return
-	}
-}
-
 // predefined permission getter func
 
 // everyone is granted in the same way
@@ -173,44 +113,6 @@ func PredefinedPermissionRoles(userRolesMap map[string][]string) osecure.GetPerm
 	return func(ctx context.Context, userID string, clientID string, token *oauth2.Token) (permissions []string, err error) {
 		roles := internalUserRolesMap[userID]
 		return roles, nil
-	}
-
-}
-
-// sentry permission
-func SentryPermission(permissionsURL string) osecure.GetPermissionsFunc {
-	return func(ctx context.Context, userID string, clientID string, token *oauth2.Token) (permissions []string, err error) {
-		client := oauth2.NewClient(ctx, oauth2.StaticTokenSource(token))
-
-		//resp, err := client.PostForm(permissionsURL, url.Values{})
-		resp, err := client.Get(permissionsURL)
-		if err != nil {
-			return
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			var respData []byte
-			respData, err = ioutil.ReadAll(resp.Body)
-			if err != nil {
-				return
-			}
-
-			err = fmt.Errorf("Sentry API error: status code: %d, body:\n%s", resp.StatusCode, string(respData))
-			return
-		}
-
-		var result struct {
-			Permissions []string `json:"permissions"`
-		}
-
-		err = json.NewDecoder(resp.Body).Decode(&result)
-		if err != nil {
-			return
-		}
-
-		permissions = result.Permissions
-		return
 	}
 
 }
