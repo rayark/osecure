@@ -114,14 +114,12 @@ type OAuthConfig struct {
 	ClientID     string   `yaml:"client_id" env:"client_id"`
 	ClientSecret string   `yaml:"client_secret" env:"client_secret"`
 	Scopes       []string `yaml:"scopes" env:"scopes"`
-	AppIDList    []string `yaml:"app_id_list" env:"app_id_list"`
 }
 
 type OAuthSession struct {
 	name          string
 	cookieStore   *sessions.CookieStore
 	client        *oauth2.Config
-	appIDSet      StringSet
 	tokenVerifier *TokenVerifier
 	stateHandler  StateHandler
 }
@@ -140,14 +138,17 @@ func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConf
 		name:          name,
 		cookieStore:   newCookieStore(cookieConf),
 		client:        client,
-		appIDSet:      NewStringSet(oauthConf.AppIDList),
 		tokenVerifier: tokenVerifier,
 		stateHandler:  stateHandler,
 	}
 }
 
+func (s *OAuthSession) isServiceAccount(userID, clientID string) bool {
+	return userID == clientID
+}
+
 func (s *OAuthSession) isValidClientID(clientID string) bool {
-	return clientID == s.client.ClientID || s.appIDSet.Contain(clientID)
+	return clientID == s.client.ClientID
 }
 
 func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*AuthSessionData, bool, error) {
@@ -193,7 +194,7 @@ func (s *OAuthSession) getAuthSessionDataFromRequest(r *http.Request) (*AuthSess
 		AuthSessionCookieData: cookieData,
 	}
 
-	if !s.isValidClientID(data.ClientID) {
+	if !s.isValidClientID(data.ClientID) && !s.isServiceAccount(data.UserID, data.ClientID) {
 		return nil, false, ErrorInvalidClientID
 	}
 
