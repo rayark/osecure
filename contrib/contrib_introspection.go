@@ -19,7 +19,7 @@ import (
 // predefined implementation
 
 // GoogleOauth2Endpoint is Google's OAuth 2.0 default endpoint.
-var GoogleOauth2Endpoint = oauth2.Endpoint{
+var GoogleOauth2Endpoint = osecure.OAuthEndpoint{
 	AuthURL:  "https://accounts.google.com/o/oauth2/v2/auth",
 	TokenURL: "https://oauth2.googleapis.com/token",
 }

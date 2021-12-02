@@ -111,6 +111,8 @@ type OAuthConfig struct {
 	AppIDList    []string `yaml:"app_id_list" env:"app_id_list"`
 }
 
+type OAuthEndpoint oauth2.Endpoint
+
 type OAuthSession struct {
 	name          string
 	cookieStore   *sessions.CookieStore
@@ -121,12 +123,12 @@ type OAuthSession struct {
 }
 
 // NewOAuthSession creates osecure session.
-func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConfig, endpoint oauth2.Endpoint, tokenVerifier *TokenVerifier, callbackURL string, stateHandler StateHandler) *OAuthSession {
+func NewOAuthSession(name string, cookieConf *CookieConfig, oauthConf *OAuthConfig, endpoint OAuthEndpoint, tokenVerifier *TokenVerifier, callbackURL string, stateHandler StateHandler) *OAuthSession {
 	client := &oauth2.Config{
 		ClientID:     oauthConf.ClientID,
 		ClientSecret: oauthConf.ClientSecret,
 		Scopes:       oauthConf.Scopes,
-		Endpoint:     endpoint,
+		Endpoint:     oauth2.Endpoint(endpoint),
 		RedirectURL:  callbackURL,
 	}
 
