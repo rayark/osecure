@@ -7,10 +7,10 @@ import (
 	"net/http"
 
 	"github.com/julienschmidt/httprouter"
-	"github.com/rayark/osecure/v5"
-	osecure_contrib "github.com/rayark/osecure/v5/contrib"
-	"github.com/rayark/osecure/v5/inter_server"
-	"github.com/rayark/osecure/v5/state_handler"
+	"github.com/rayark/osecure/v6"
+	osecure_contrib "github.com/rayark/osecure/v6/contrib"
+	"github.com/rayark/osecure/v6/inter_server"
+	"github.com/rayark/osecure/v6/state_handler"
 	"github.com/rayark/zin"
 	"github.com/rayark/zin/middleware"
 )
