@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/rayark/osecure/v5"
+	"github.com/rayark/osecure/v6"
 	"golang.org/x/oauth2"
 )
 
