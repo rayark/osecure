@@ -310,7 +310,11 @@ func (s *OAuthSession) EndOAuth(w http.ResponseWriter, r *http.Request) (string,
 }
 
 func (s *OAuthSession) verifyAndSaveToken(w http.ResponseWriter, r *http.Request, token *oauth2.Token) error {
-	_, err := s.tokenVerifier.GetPermissionsFunc(r.Context(), "", "", token)
+	userID, clientID, _, _, err := s.tokenVerifier.IntrospectTokenFunc(r.Context(), token.AccessToken)
+	if err != nil {
+		return WrapError(ErrorStringCannotIntrospectToken, err)
+	}
+	_, err = s.tokenVerifier.GetPermissionsFunc(r.Context(), userID, clientID, token)
 	if err != nil {
 		return WrapError(ErrorStringCannotGetPermission, err)
 	}
