@@ -8,20 +8,9 @@ import (
 	"encoding/base64"
 	"encoding/gob"
 	"encoding/json"
-	"errors"
 	"net/http"
 
 	"github.com/gorilla/sessions"
-)
-
-const (
-	nonceSize = int(16)
-)
-
-var (
-	ErrorCannotGenerateCompleteState = errors.New("cannot generate complete state")
-	ErrorCannotRetrieveCookie        = errors.New("cannot retrieve cookie")
-	ErrorInvalidState                = errors.New("invalid state")
 )
 
 func init() {
