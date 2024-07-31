@@ -15,7 +15,8 @@ import (
 )
 
 const (
-	nonceSize = int(16)
+	nonceSize     = int(16)
+	redirectParam = "redirect_url"
 )
 
 var (
@@ -83,6 +84,14 @@ func (sh DefaultStateHandler) Generate(cookieStore *sessions.CookieStore, w http
 	continueURI := sh.ContinueURI
 	if continueURI == "" {
 		continueURI = r.RequestURI
+	}
+
+	// retrieve redirect url from query in order to let frontend decide where to redirect
+	q := r.URL.Query()
+	redirectUrl := q.Get(redirectParam)
+	var err error
+	if redirectUrl != "" {
+		continueURI = redirectUrl
 	}
 
 	// generate nonce
