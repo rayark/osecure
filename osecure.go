@@ -326,8 +326,7 @@ func (s *OAuthSession) verifyAndSaveToken(w http.ResponseWriter, r *http.Request
 	return nil
 }
 
-// CallbackView is a http handler for the authentication redirection of the auth server.
-func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
+func (s *OAuthSession) callbackView(w http.ResponseWriter, r *http.Request) (*url.URL, url.Values) {
 	continueURI, token, err := s.EndOAuth(w, r)
 	statusCode := http.StatusOK
 	if err == nil {
@@ -350,7 +349,22 @@ func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		qry.Add("error", err.Error())
 	}
+	return uri, qry
+}
+
+// CallbackView handles the authentication redirect using a legacy method that
+// passes redirect parameters in the URL fragment (#).
+func (s *OAuthSession) CallbackView(w http.ResponseWriter, r *http.Request) {
+	uri, qry := s.callbackView(w, r)
 	uri.Fragment += "?" + qry.Encode()
+	http.Redirect(w, r, uri.String(), http.StatusSeeOther)
+}
+
+// CallbackViewWithQuery handles the authentication redirect by passing
+// status parameters in the URL query string (?).
+func (s *OAuthSession) CallbackViewWithQuery(w http.ResponseWriter, r *http.Request) {
+	uri, qry := s.callbackView(w, r)
+	uri.RawQuery = qry.Encode()
 	http.Redirect(w, r, uri.String(), http.StatusSeeOther)
 }
 
